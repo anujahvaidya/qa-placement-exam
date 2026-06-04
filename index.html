@@ -723,7 +723,7 @@ function AdminPanel({ questions, setQuestions, results, setResults, drives, setD
 
             <div className="bg-white rounded-xl shadow p-4 flex items-center gap-3 flex-wrap">
               <select className={inp} value={filterDrive} onChange={e=>setFilterDrive(e.target.value)}>
-                <option value="all">All Drives ({results.length})</option>
+                <option value="all">All Drives ({drives.length}) — {results.length} students</option>
                 {drives.map(d=><option key={d.id} value={d.id}>{d.name} — {d.college} ({results.filter(r=>r.student.driveId===d.id).length})</option>)}
               </select>
               <input className={`${inp} flex-1 min-w-32`} placeholder="Search name / email..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}/>
