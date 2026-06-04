@@ -495,15 +495,15 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
     if(!newDrive.name||!newDrive.college) return alert("Fill drive name and college.");
     if(!questions.length) return alert("Upload question bank first.");
     const dist = buildAutoDistribution(questions);
-    const drive = {...newDrive, minutes:parseInt(newDrive.minutes)||45, passPct:parseInt(newDrive.passPct)||60, distribution:dist, createdAt:new Date().toISOString()};
+    const id = Date.now().toString();
+    const drive = {...newDrive, minutes:parseInt(newDrive.minutes)||45, passPct:parseInt(newDrive.passPct)||60, distribution:dist, createdAt:new Date().toISOString(), id};
     setSaving(true);
     try {
-      const id = Date.now().toString();
-      await fsSet("drives", id, {...drive, id});
-      setDrives(prev=>[...prev,{...drive,id}]);
+      await fsSet("drives", id, drive);
       setNewDrive({name:"",college:"",minutes:45,passPct:60,active:true});
     } catch(e) { alert("Error saving drive: "+e.message); }
     setSaving(false);
+    // No manual setDrives — listener handles it
   };
 
   const openDistEditor = d=>{ setDistDriveId(d.id); setTempDist({...d.distribution}); };
@@ -516,7 +516,6 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
     try {
       const drive=drives.find(d=>d.id===distDriveId);
       await fsSet("drives",distDriveId,{...drive,distribution:dist});
-      setDrives(prev=>prev.map(d=>d.id===distDriveId?{...d,distribution:dist}:d));
       setDistDriveId(null);
     } catch(e) { alert("Error: "+e.message); }
     setSaving(false);
@@ -530,7 +529,6 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
     try {
       const drive=drives.find(d=>d.id===id);
       await fsSet("drives",id,{...drive,[field]:val});
-      setDrives(prev=>prev.map(d=>d.id===id?{...d,[field]:val}:d));
       setEditField(p=>{const n={...p};delete n[key];return n;});
     } catch(e) { alert("Error: "+e.message); }
     setSaving(false);
@@ -538,14 +536,13 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
 
   const toggleDrive = async id=>{
     const drive=drives.find(d=>d.id===id);
-    const updated={...drive,active:!drive.active};
-    try { await fsSet("drives",id,updated); setDrives(prev=>prev.map(d=>d.id===id?updated:d)); }
+    try { await fsSet("drives",id,{...drive,active:!drive.active}); }
     catch(e) { alert("Error: "+e.message); }
   };
 
   const deleteDrive = async id=>{
     if(!window.confirm("Delete drive? Results stay.")) return;
-    try { await fsDelete("drives",id); setDrives(prev=>prev.filter(d=>d.id!==id)); }
+    try { await fsDelete("drives",id); }
     catch(e) { alert("Error: "+e.message); }
   };
 
