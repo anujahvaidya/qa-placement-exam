@@ -37,6 +37,8 @@
   ::-webkit-scrollbar { width:6px; height:6px; }
   ::-webkit-scrollbar-track { background:#f1f1f1; }
   ::-webkit-scrollbar-thumb { background:#ccc; border-radius:3px; }
+  .exam-active { user-select: none !important; -webkit-user-select: none !important; }
+  .exam-active * { user-select: none !important; -webkit-user-select: none !important; }
 </style>
 </head>
 <body>
@@ -260,8 +262,49 @@ function ExamScreen({ student, questions, onSubmit }) {
     return ()=>{ document.removeEventListener("visibilitychange", handle); if(violationTimer) clearTimeout(violationTimer); };
   },[doSubmit]);
 
-  // Block back button
+  // Block right-click
   useEffect(()=>{
+    const handler = e => e.preventDefault();
+    document.addEventListener("contextmenu", handler);
+    return ()=> document.removeEventListener("contextmenu", handler);
+  },[]);
+
+  // Block keyboard shortcuts (DevTools, copy, view-source etc.)
+  useEffect(()=>{
+    const handler = e => {
+      const blocked = (
+        e.key === "F12" ||
+        (e.ctrlKey && ["u","U","s","S","a","A","c","C","v","V","p","P"].includes(e.key)) ||
+        (e.ctrlKey && e.shiftKey && ["i","I","j","J","c","C"].includes(e.key))
+      );
+      if(blocked) e.preventDefault();
+    };
+    document.addEventListener("keydown", handler);
+    return ()=> document.removeEventListener("keydown", handler);
+  },[]);
+
+  // Picture-in-Picture detection & auto-exit
+  useEffect(()=>{
+    const handlePiP = async () => {
+      if(document.pictureInPictureElement){
+        try { await document.exitPictureInPicture(); } catch {}
+        // Count as violation
+        if(!submittedRef.current){
+          violationsRef.current += 1;
+          const nv = violationsRef.current;
+          setViolations(nv);
+          if(nv >= MAX_VIOLATIONS){
+            setWarning({ msg:`Picture-in-Picture detected. Violation limit reached (${MAX_VIOLATIONS}/${MAX_VIOLATIONS}). Your exam is being auto-submitted.`, fatal:true });
+            setTimeout(()=>doSubmit(true,"PiP + Tab violations"),2500);
+          } else {
+            setWarning({ msg:`⚠️ Picture-in-Picture is not allowed during the exam! Warning ${nv}/${MAX_VIOLATIONS}.`, fatal:false });
+          }
+        }
+      }
+    };
+    document.addEventListener("enterpictureinpicture", handlePiP);
+    return ()=> document.removeEventListener("enterpictureinpicture", handlePiP);
+  },[doSubmit]);
     window.history.pushState(null,"",window.location.href);
     const onPop=()=>window.history.pushState(null,"",window.location.href);
     window.addEventListener("popstate",onPop);
@@ -283,7 +326,7 @@ function ExamScreen({ student, questions, onSubmit }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 select-none">
+    <div className="min-h-screen bg-gray-50 select-none exam-active">
       {warning && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-75 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm text-center">
@@ -573,7 +616,7 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
     a.download=`results_${Date.now()}.csv`; a.click();
   };
 
-  const tabs=[["drives","🏫 Drives"],["questions","📋 Questions"],["results","📊 Results"]];
+  const tabs=[["drives","🏫 Drives"],["questions","📋 Questions"],["results","📊 Results"],["manual","📖 Manual"]];
   const inp="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500";
 
   const InlineEdit=({driveId,field,current,suffix=""})=>{
@@ -756,7 +799,130 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
           </div>
         )}
 
-        {/* Results */}
+        {/* Manual */}
+        {tab==="manual" && (
+          <div className="space-y-6 max-w-3xl">
+
+            <div className="bg-white rounded-xl shadow p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-1">📖 Admin User Manual</h2>
+              <p className="text-xs text-gray-400">QA Placement Exam Portal — Cybercom Creation · Confidential, Admin Only</p>
+            </div>
+
+            {[
+              {
+                icon:"🚀", title:"Getting Started",
+                items:[
+                  ["Step 1 — Upload Question Bank", "Go to the Questions tab and upload your CSV file. The CSV must contain columns: Question No, Category, Sub-Type, Question, Option A, Option B, Option C, Option D, Correct Answer, Explanation. All 135 questions will be stored in Firebase and reused across all drives."],
+                  ["Step 2 — Create a Placement Drive", "Go to the Drives tab. Fill in Drive Name, College, Duration (mins), and Pass % Threshold. Click Add Drive. A drive is a single exam session tied to one college."],
+                  ["Step 3 — Configure Question Distribution", "After creating a drive, click the Qs ✏️ button to set how many questions to pick from each category. Default is auto-balanced across all categories totalling 50 questions. You can override per category."],
+                  ["Step 4 — Activate the Drive", "Drives are Active by default. Only Active drives appear in the student registration form. Deactivate a drive when the exam day is over."],
+                  ["Step 5 — Share the URL", "Share your GitHub Pages URL with students. They register and take the exam directly from their browser — no login or install required."],
+                ]
+              },
+              {
+                icon:"🏫", title:"Managing Drives",
+                items:[
+                  ["Active vs Inactive", "Active drives appear in the student registration dropdown. Inactive drives are hidden from students but their results remain accessible in the admin panel."],
+                  ["Duration", "Set per drive. Default is 45 minutes. Can be edited inline anytime using the ✏️ button — changes apply to new exam sessions only, not ones already in progress."],
+                  ["Pass % Threshold", "Set per drive. Default is 60%. Can be edited inline anytime. Each result is evaluated against the threshold of its drive at the time of viewing."],
+                  ["Question Distribution", "Each drive has its own distribution config. If you change the question bank after creating a drive, re-open the distribution editor for that drive to ensure counts are still valid."],
+                  ["Deleting a Drive", "Deleting a drive removes it from the student form but does NOT delete its results. Results remain accessible under All Drives in the Results tab."],
+                ]
+              },
+              {
+                icon:"📋", title:"Question Bank",
+                items:[
+                  ["Single Shared Bank", "One CSV is used across all drives. Each drive picks questions from it based on its distribution config."],
+                  ["Replacing the Bank", "Click 'Replace Question Bank' to upload a new CSV. A confirmation is shown before replacing. Existing results are never affected — they store question data at time of submission."],
+                  ["CSV Format", "Required columns: Question No, Category, Sub-Type, Question, Option A, Option B, Option C, Option D, Correct Answer, Explanation. Correct Answer must be A, B, C, or D (uppercase)."],
+                  ["Category Breakdown", "After upload, the Questions tab shows a pill for each category with its count. Use this to plan your distribution config per drive."],
+                ]
+              },
+              {
+                icon:"👨‍🎓", title:"Student Registration Rules",
+                items:[
+                  ["Required Fields", "Full Name, Degree/Course, Batch, 10-digit Mobile Number, Email Address, College Name, and Placement Drive selection are all mandatory."],
+                  ["Re-attempt Prevention", "Each student is identified by Email + Drive combination. Once a student submits (manually, time-up, or auto-submit), that combination is locked in Firebase. Any re-attempt attempt shows an error message."],
+                  ["Re-attempt Reset", "If you need to allow a specific student to re-attempt, go to Firebase Console → Firestore → attempts collection and delete the document with their email__driveId key."],
+                ]
+              },
+              {
+                icon:"🛡️", title:"Exam Security Rules",
+                items:[
+                  ["Tab Switch Detection", "The exam monitors tab visibility using the Page Visibility API. If a student switches away from the exam tab for more than 1.5 seconds, a violation is recorded. After 3 violations, the exam is auto-submitted."],
+                  ["Grace Period", "A 1.5-second grace period is applied before counting a tab switch. This absorbs OS notifications, accidental clicks outside the browser, and brief interruptions without penalising the student."],
+                  ["Picture-in-Picture Blocked", "If a student activates Picture-in-Picture mode (used to overlay AI tools), it is immediately exited and counted as a violation."],
+                  ["Right-Click Disabled", "Right-click context menu is disabled during the entire exam to prevent Inspect Element, Save As, and other browser tools."],
+                  ["Keyboard Shortcuts Blocked", "F12 (DevTools), Ctrl+U (View Source), Ctrl+C/V (Copy/Paste), Ctrl+S (Save), Ctrl+P (Print), Ctrl+Shift+I/J/C (DevTools) are all blocked during the exam."],
+                  ["Text Selection Disabled", "Question text and options cannot be selected or copied during the exam."],
+                  ["Browser Back Button Blocked", "The browser back button is intercepted and disabled during the exam. Students cannot navigate away using browser history."],
+                  ["Timer Auto-Submit", "When the exam timer reaches 0, the exam is automatically submitted with whatever answers the student has provided at that point."],
+                  ["Violation Logging", "The submission reason (Manual submit / Time up / Tab switch violations / PiP violations) is recorded for every result and visible in the Results tab and exported CSV."],
+                ]
+              },
+              {
+                icon:"📊", title:"Results & Reporting",
+                items:[
+                  ["Real-Time Results", "Results appear in the admin panel instantly as students submit — no page refresh needed. Powered by Firebase Firestore real-time listeners."],
+                  ["Per-Drive Filtering", "Filter results by drive using the dropdown. Each drive shows its student count."],
+                  ["Search", "Search results by student name or email address."],
+                  ["Sorting", "Sort by: Newest First, Oldest First, Score High→Low, Score Low→High, Name A→Z, Name Z→A."],
+                  ["Summary Cards", "The Results tab shows Total Appeared, Passed, and Average Score for the current filter selection."],
+                  ["Category Breakdown", "Each result can be expanded to show per-category correct/incorrect counts, helping identify topic-wise weaknesses."],
+                  ["Question Audit Trail", "Every result stores the exact question numbers used in that exam. Visible at the bottom of each expanded result and in the exported CSV."],
+                  ["CSV Export", "Export results filtered by drive. Columns: Name, Degree, Batch, Mobile, Email, College, Drive, Date, Score, Total, Percentage, Pass/Fail, Submit Reason, Questions Used."],
+                ]
+              },
+              {
+                icon:"🗄️", title:"Data Management",
+                items:[
+                  ["Clear Results & Attempts", "Wipes all exam results and re-attempt locks. Question bank and drives are preserved. Use this to clean up test data before a real placement drive."],
+                  ["Clear Everything", "Full wipe — removes all drives, results, attempts, and the question bank. Use only when starting completely fresh."],
+                  ["Firebase Storage", "All data is stored in Firebase Firestore (Spark free plan). 1 GB storage, 50,000 reads/day, 20,000 writes/day. At ~10 KB per result, you can store 100,000+ results before hitting storage limits. Data never expires automatically."],
+                  ["Question Bank Storage", "Questions are stored as a single Firestore document to stay within write limits. Max document size is 1 MB — sufficient for 500+ questions."],
+                ]
+              },
+              {
+                icon:"🔐", title:"Admin Access",
+                items:[
+                  ["Secret Access", "The admin panel is not accessible from the home screen. It is opened via the keyboard shortcut Ctrl+Shift+A on any screen."],
+                  ["Password", "Default admin password: cybercom@2024. To change it, update the ADMIN_SECRET constant in the HTML file and redeploy."],
+                  ["Session", "Admin sessions are in-memory only. Refreshing the page logs you out. There is no persistent admin login — re-enter the password each session."],
+                ]
+              },
+              {
+                icon:"📅", title:"Recommended Workflow Per Drive",
+                items:[
+                  ["Before the Drive", "1. Upload / verify question bank is current. 2. Create a new drive with correct college name, duration, and pass %. 3. Configure question distribution. 4. Activate the drive. 5. Share the portal URL with the college coordinator."],
+                  ["During the Drive", "Monitor the Results tab in real time. Results appear as students submit. Check for Tab switch violations or Time up auto-submits."],
+                  ["After the Drive", "1. Export results CSV for the drive. 2. Deactivate the drive so new students cannot register. 3. Share results with HR / management."],
+                  ["Before Next Drive", "Use 'Clear Results & Attempts' only if you want a clean slate. Otherwise results from all drives accumulate and remain filterable."],
+                ]
+              },
+            ].map(section=>(
+              <div key={section.title} className="bg-white rounded-xl shadow overflow-hidden">
+                <div className="px-6 py-4 border-b bg-gray-50">
+                  <h3 className="font-bold text-gray-800">{section.icon} {section.title}</h3>
+                </div>
+                <div className="divide-y">
+                  {section.items.map(([title, desc])=>(
+                    <div key={title} className="px-6 py-4">
+                      <p className="text-sm font-semibold text-gray-700 mb-1">{title}</p>
+                      <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-700">
+              <strong>Version:</strong> QA Placement Exam Portal v3.0 · Firebase Edition ·
+              Built for Cybercom Creation · Admin manual is visible only inside the password-protected admin panel.
+            </div>
+          </div>
+        )}
+
+
         {tab==="results" && (
           <div className="space-y-4">
             {results.length>0 && (()=>{
@@ -865,26 +1031,24 @@ function App() {
     return ()=>window.removeEventListener("fbready",h);
   },[]);
 
-  // Load initial data + set up real-time listeners
   useEffect(()=>{
     if(!fbReady) return;
-    let unsub1, unsub2, unsub3;
-    (async()=>{
-      try {
-        // Load questions (single doc)
-        const qSnap = await fb().getDoc(fb().doc(db(),"questions","bank"));
-        if(qSnap.exists()){
-          setQuestions(JSON.parse(qSnap.data().data));
-          setQBankMeta({ count: qSnap.data().count, updatedAt: new Date(qSnap.data().updatedAt).toLocaleString("en-IN"), fileName: qSnap.data().fileName||"question_bank.csv" });
-        }
+    let unsub1, unsub2;
 
-        // Real-time listeners for drives and results
-        unsub1 = fsListen("drives", data=>setDrives(data));
-        unsub2 = fsListen("results", data=>setResults(data));
-      } catch(e){ console.error("Firebase load error:",e); }
-      setLoading(false);
-    })();
-    return ()=>{ unsub1?.(); unsub2?.(); unsub3?.(); };
+    // Load questions once (not a listener — questions don't change during exam)
+    fb().getDoc(fb().doc(db(),"questions","bank")).then(qSnap=>{
+      if(qSnap.exists()){
+        setQuestions(JSON.parse(qSnap.data().data));
+        setQBankMeta({ count: qSnap.data().count, updatedAt: new Date(qSnap.data().updatedAt).toLocaleString("en-IN"), fileName: qSnap.data().fileName||"question_bank.csv" });
+      }
+    }).catch(e=>console.error("Questions load error:",e));
+
+    // Real-time listeners — attached synchronously so cleanup works correctly
+    unsub1 = fsListen("drives",  data => setDrives(data));
+    unsub2 = fsListen("results", data => setResults(data));
+
+    setLoading(false);
+    return ()=>{ unsub1?.(); unsub2?.(); };
   },[fbReady]);
 
   // Ctrl+Shift+A → admin login
