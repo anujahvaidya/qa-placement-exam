@@ -244,22 +244,33 @@ function ExamScreen({ student, questions, onSubmit }) {
 
   // Tab / window detection
   useEffect(()=>{
+    let violationTimer = null;
     const handle = ()=>{
       if(submittedRef.current) return;
-      if(!document.hidden && document.hasFocus()) return;
-      violationsRef.current += 1;
-      const nv = violationsRef.current;
-      setViolations(nv);
-      if(nv>=MAX_VIOLATIONS){
-        setWarning({ msg:`Tab switch limit reached (${MAX_VIOLATIONS}/${MAX_VIOLATIONS}). Your exam is being auto-submitted.`, fatal:true });
-        setTimeout(()=>doSubmit(true,"Tab switch violations"),2500);
-      } else {
-        setWarning({ msg:`⚠️ Tab switch detected! Warning ${nv}/${MAX_VIOLATIONS}. Exam will be auto-submitted on next violation.`, fatal:false });
+      if(!document.hidden){
+        // Tab came back — cancel pending grace period, not a real violation
+        if(violationTimer){ clearTimeout(violationTimer); violationTimer=null; }
+        return;
       }
+      // Tab is hidden — wait 1.5s grace period before counting
+      // This absorbs OS notifications, brief accidental clicks outside browser, etc.
+      violationTimer = setTimeout(()=>{
+        violationTimer = null;
+        if(!document.hidden) return; // student came back within grace period
+        if(submittedRef.current) return;
+        violationsRef.current += 1;
+        const nv = violationsRef.current;
+        setViolations(nv);
+        if(nv>=MAX_VIOLATIONS){
+          setWarning({ msg:`Tab switch limit reached (${MAX_VIOLATIONS}/${MAX_VIOLATIONS}). Your exam is being auto-submitted.`, fatal:true });
+          setTimeout(()=>doSubmit(true,"Tab switch violations"),2500);
+        } else {
+          setWarning({ msg:`⚠️ Tab switch detected! Warning ${nv}/${MAX_VIOLATIONS}. Exam will be auto-submitted on next violation.`, fatal:false });
+        }
+      }, 1500);
     };
     document.addEventListener("visibilitychange", handle);
-    window.addEventListener("blur", handle);
-    return ()=>{ document.removeEventListener("visibilitychange", handle); window.removeEventListener("blur", handle); };
+    return ()=>{ document.removeEventListener("visibilitychange", handle); if(violationTimer) clearTimeout(violationTimer); };
   },[doSubmit]);
 
   // Block back button
