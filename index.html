@@ -456,6 +456,7 @@ function AdminPanel({ questions, setQuestions, results, setResults, drives, setD
   const [tempDist,     setTempDist]     = useState({});
   const [filterDrive,  setFilterDrive]  = useState("all");
   const [searchTerm,   setSearchTerm]   = useState("");
+  const [sortOrder,    setSortOrder]    = useState("newest");
   const fileRef = useRef();
 
   const byCategory = {};
@@ -501,7 +502,16 @@ function AdminPanel({ questions, setQuestions, results, setResults, drives, setD
   };
 
   const filteredResults = (filterDrive==="all"?results:results.filter(r=>r.student.driveId===filterDrive))
-    .filter(r=>!searchTerm || r.student.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.student.email.toLowerCase().includes(searchTerm.toLowerCase()));
+    .filter(r=>!searchTerm || r.student.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.student.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a,b)=>{
+      const pctA = (a.score/a.total)*100, pctB = (b.score/b.total)*100;
+      if(sortOrder==="pct_desc") return pctB - pctA;
+      if(sortOrder==="pct_asc")  return pctA - pctB;
+      if(sortOrder==="name_asc") return a.student.name.localeCompare(b.student.name);
+      if(sortOrder==="name_desc")return b.student.name.localeCompare(a.student.name);
+      if(sortOrder==="oldest")   return new Date(a.timestamp) - new Date(b.timestamp);
+      return new Date(b.timestamp) - new Date(a.timestamp); // newest
+    });
 
   const exportCSV=()=>{
     if(!filteredResults.length) return alert("No results to export.");
@@ -717,6 +727,14 @@ function AdminPanel({ questions, setQuestions, results, setResults, drives, setD
                 {drives.map(d=><option key={d.id} value={d.id}>{d.name} — {d.college} ({results.filter(r=>r.student.driveId===d.id).length})</option>)}
               </select>
               <input className={`${inp} flex-1 min-w-32`} placeholder="Search name / email..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}/>
+              <select className={inp} value={sortOrder} onChange={e=>setSortOrder(e.target.value)}>
+                <option value="newest">Sort: Newest First</option>
+                <option value="oldest">Sort: Oldest First</option>
+                <option value="pct_desc">Sort: Score High → Low</option>
+                <option value="pct_asc">Sort: Score Low → High</option>
+                <option value="name_asc">Sort: Name A → Z</option>
+                <option value="name_desc">Sort: Name Z → A</option>
+              </select>
               <Btn onClick={exportCSV} cls="bg-green-600 hover:bg-green-700 text-white">⬇ Export CSV</Btn>
               <span className="text-sm text-gray-500">{filteredResults.length} record(s)</span>
             </div>
