@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>QA Placement Exam — Cybercom Creation</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
+  import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc, onSnapshot, deleteDoc }
+                              from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   const firebaseConfig = {
     apiKey: "AIzaSyBEIbzOz94vjQj5eIggEnLRKN0Eu5LNnIw",
     authDomain: "cybercom-placement.firebaseapp.com",
@@ -20,25 +20,25 @@
     messagingSenderId: "751882262484",
     appId: "1:751882262484:web:f86463a2c7cbfc1a596841"
   };
-
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
-
   window.__db = db;
   window.__fb = { collection, doc, getDocs, getDoc, setDoc, addDoc, onSnapshot, deleteDoc };
   window.__fbReady = true;
   window.dispatchEvent(new Event("fbready"));
 </script>
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  .animate-pulse { animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-  ::-webkit-scrollbar { width:6px; height:6px; }
-  ::-webkit-scrollbar-track { background:#f1f1f1; }
-  ::-webkit-scrollbar-thumb { background:#ccc; border-radius:3px; }
-  .exam-active { user-select: none !important; -webkit-user-select: none !important; }
-  .exam-active * { user-select: none !important; -webkit-user-select: none !important; }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+  .spin{animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .pulse{animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-track{background:#f1f1f1;}
+  ::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px;}
+  .exam-lock{user-select:none!important;-webkit-user-select:none!important;}
+  .exam-lock *{user-select:none!important;-webkit-user-select:none!important;}
 </style>
 </head>
 <body>
@@ -49,114 +49,98 @@ const { useState, useEffect, useRef, useCallback } = React;
 const ADMIN_SECRET   = "cybercom@2024";
 const MAX_VIOLATIONS = 3;
 
-// ── Firebase helpers (accessed via window.__db / window.__fb) ─────────────────
-function db()  { return window.__db; }
-function fb()  { return window.__fb; }
-
-async function fsGetAll(col) {
-  const snap = await fb().getDocs(fb().collection(db(), col));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
-async function fsSet(col, id, data) {
-  await fb().setDoc(fb().doc(db(), col, id), data);
-}
-async function fsAdd(col, data) {
-  await fb().addDoc(fb().collection(db(), col), data);
-}
-async function fsDelete(col, id) {
-  await fb().deleteDoc(fb().doc(db(), col, id));
-}
-function fsListen(col, cb) {
-  return fb().onSnapshot(fb().collection(db(), col), snap => {
-    cb(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  });
-}
+// ── Firebase helpers ──────────────────────────────────────────────────────────
+const db  = ()=>window.__db;
+const fb  = ()=>window.__fb;
+const fsGet    = (col,id)   => fb().getDoc(fb().doc(db(),col,id));
+const fsSet    = (col,id,d) => fb().setDoc(fb().doc(db(),col,id),d);
+const fsAdd    = (col,d)    => fb().addDoc(fb().collection(db(),col),d);
+const fsDel    = (col,id)   => fb().deleteDoc(fb().doc(db(),col,id));
+const fsAll    = (col)      => fb().getDocs(fb().collection(db(),col)).then(s=>s.docs.map(d=>({id:d.id,...d.data()})));
+const fsListen = (col,cb)   => fb().onSnapshot(fb().collection(db(),col),s=>cb(s.docs.map(d=>({id:d.id,...d.data()}))));
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
-function parseCSV(text) {
-  const lines = text.trim().split("\n");
-  const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
-  return lines.slice(1).map(line => {
-    const cols = []; let cur = "", inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      if (line[i] === '"' && !inQ) { inQ = true; }
-      else if (line[i] === '"' && inQ && line[i+1] === '"') { cur += '"'; i++; }
-      else if (line[i] === '"' && inQ) { inQ = false; }
-      else if (line[i] === ',' && !inQ) { cols.push(cur.trim()); cur = ""; }
-      else cur += line[i];
+function parseCSV(text){
+  const lines=text.trim().split("\n");
+  const headers=lines[0].split(",").map(h=>h.trim().replace(/^"|"$/g,""));
+  return lines.slice(1).map(line=>{
+    const cols=[];let cur="",inQ=false;
+    for(let i=0;i<line.length;i++){
+      if(line[i]==='"'&&!inQ){inQ=true;}
+      else if(line[i]==='"'&&inQ&&line[i+1]==='"'){cur+='"';i++;}
+      else if(line[i]==='"'&&inQ){inQ=false;}
+      else if(line[i]===','&&!inQ){cols.push(cur.trim());cur="";}
+      else cur+=line[i];
     }
     cols.push(cur.trim());
-    const obj = {};
-    headers.forEach((h, i) => obj[h] = (cols[i] || "").replace(/^"|"$/g, ""));
+    const obj={};
+    headers.forEach((h,i)=>obj[h]=(cols[i]||"").replace(/^"|"$/g,""));
     return obj;
-  }).filter(r => r["Question No"] && r["Question"]);
+  }).filter(r=>r["Question No"]&&r["Question"]);
 }
 
-function pickQuestions(questions, distribution) {
-  const byCategory = {};
-  questions.forEach(q => { const c = q.Category||"General"; if(!byCategory[c]) byCategory[c]=[]; byCategory[c].push(q); });
-  const picked = [];
-  Object.entries(distribution).forEach(([cat, count]) => {
-    const pool = (byCategory[cat]||[]).sort(()=>Math.random()-0.5);
-    picked.push(...pool.slice(0, parseInt(count)||0));
+function pickQuestions(questions,distribution){
+  const byC={};
+  questions.forEach(q=>{const c=q.Category||"General";if(!byC[c])byC[c]=[];byC[c].push(q);});
+  const picked=[];
+  Object.entries(distribution).forEach(([cat,count])=>{
+    const pool=(byC[cat]||[]).sort(()=>Math.random()-.5);
+    picked.push(...pool.slice(0,parseInt(count)||0));
   });
-  return picked.sort(()=>Math.random()-0.5);
+  return picked.sort(()=>Math.random()-.5);
 }
 
-function buildAutoDistribution(questions) {
-  const byCategory = {};
-  questions.forEach(q => { const c=q.Category||"General"; if(!byCategory[c]) byCategory[c]=[]; byCategory[c].push(q); });
-  const cats = Object.keys(byCategory);
-  const total = 50, base = Math.floor(total/cats.length);
-  let rem = total - base*cats.length;
-  const dist = {};
-  cats.forEach(c => { dist[c] = Math.min(base+(rem-->0?1:0), byCategory[c].length); });
+function buildAutoDist(questions){
+  const byC={};
+  questions.forEach(q=>{const c=q.Category||"General";if(!byC[c])byC[c]=[];byC[c].push(q);});
+  const cats=Object.keys(byC),total=50,base=Math.floor(total/cats.length);
+  let rem=total-base*cats.length;
+  const dist={};
+  cats.forEach(c=>{dist[c]=Math.min(base+(rem-->0?1:0),byC[c].length);});
   return dist;
 }
 
-function fmtTime(s) { return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; }
+function fmtTime(s){return`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;}
 
-function Btn({ children, onClick, cls="", disabled }) {
+function Btn({children,onClick,cls="",disabled}){
   return <button onClick={onClick} disabled={disabled}
     className={`px-4 py-2 rounded font-semibold text-sm transition ${cls} ${disabled?"opacity-40 cursor-not-allowed":""}`}>{children}</button>;
 }
-
-function Spinner({ msg="Loading..." }) {
-  return (
+function Spinner({msg="Loading..."}){
+  return(
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"/>
+      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full spin"/>
       <p className="text-gray-500 text-sm">{msg}</p>
     </div>
   );
 }
 
 // ── Registration ──────────────────────────────────────────────────────────────
-function RegistrationForm({ drives, onStart }) {
-  const [form, setForm] = useState({name:"",degree:"",batch:"",mobile:"",email:"",college:"",driveId:""});
-  const [err,  setErr]  = useState("");
-  const [checking, setChecking] = useState(false);
-  const set = k => e => setForm(p=>({...p,[k]:e.target.value}));
-  const activeDrives = drives.filter(d=>d.active);
-  const inp = "w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500";
-  const lbl = "block text-xs font-semibold text-gray-600 mb-1";
+function RegistrationForm({drives,onStart}){
+  const [form,setForm]=useState({name:"",degree:"",batch:"",mobile:"",email:"",college:"",driveId:""});
+  const [err,setErr]=useState("");
+  const [checking,setChecking]=useState(false);
+  const set=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
+  const active=drives.filter(d=>d.active);
+  const inp="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500";
+  const lbl="block text-xs font-semibold text-gray-600 mb-1";
 
-  const submit = async () => {
-    const {name,degree,batch,mobile,email,college,driveId} = form;
-    if(!name||!degree||!batch||!mobile||!email||!college||!driveId) return setErr("All fields are required.");
-    if(!/^\d{10}$/.test(mobile)) return setErr("Enter a valid 10-digit mobile number.");
-    if(!/\S+@\S+\.\S+/.test(email)) return setErr("Enter a valid email address.");
+  const submit=async()=>{
+    const{name,degree,batch,mobile,email,college,driveId}=form;
+    if(!name||!degree||!batch||!mobile||!email||!college||!driveId)return setErr("All fields are required.");
+    if(!/^\d{10}$/.test(mobile))return setErr("Enter a valid 10-digit mobile number.");
+    if(!/\S+@\S+\.\S+/.test(email))return setErr("Enter a valid email address.");
     setChecking(true);
-    try {
-      // Check re-attempt in Firestore
-      const key = `${email.toLowerCase()}__${driveId}`;
-      const attempts = await fsGetAll("attempts");
-      if(attempts.find(a=>a.key===key)) { setErr("You have already completed this exam. Re-attempts are not allowed."); setChecking(false); return; }
-      const drive = drives.find(d=>d.id===driveId);
-      onStart({...form, driveId, driveName:drive?.name, driveMinutes:drive?.minutes||45, drivePassPct:drive?.passPct||60, date:new Date().toLocaleDateString("en-IN")});
-    } catch(e) { setErr("Network error. Please try again."); setChecking(false); }
+    try{
+      const key=`${email.toLowerCase()}__${driveId}`;
+      const attempts=await fsAll("attempts");
+      if(attempts.find(a=>a.key===key)){setErr("You have already completed this exam. Re-attempts are not allowed.");setChecking(false);return;}
+      const drive=drives.find(d=>d.id===driveId);
+      onStart({...form,driveId,driveName:drive?.name,driveMinutes:drive?.minutes||45,drivePassPct:drive?.passPct||60,date:new Date().toLocaleDateString("en-IN")});
+    }catch(e){setErr("Network error. Please try again.");setChecking(false);}
   };
 
-  return (
+  return(
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-8">
         <div className="text-center mb-6">
@@ -164,9 +148,9 @@ function RegistrationForm({ drives, onStart }) {
           <h1 className="text-2xl font-bold text-gray-800">QA Placement Exam</h1>
           <p className="text-sm text-gray-500 mt-1">Cybercom Creation — Candidate Registration</p>
         </div>
-        {activeDrives.length===0 ? (
+        {active.length===0?(
           <div className="text-center text-red-500 py-8 text-sm">No active placement drives at the moment.<br/>Please contact the administrator.</div>
-        ) : (
+        ):(
           <>
             <div className="grid grid-cols-2 gap-4">
               {[["name","Full Name"],["degree","Degree / Course"],["batch","Batch (e.g. 2024)"],["mobile","Mobile Number"],["email","Email Address"],["college","College Name"]].map(([k,l])=>(
@@ -179,13 +163,13 @@ function RegistrationForm({ drives, onStart }) {
                 <label className={lbl}>Placement Drive</label>
                 <select className={inp} value={form.driveId} onChange={set("driveId")}>
                   <option value="">— Select Drive —</option>
-                  {activeDrives.map(d=><option key={d.id} value={d.id}>{d.name} ({d.college}) — {d.minutes||45} mins</option>)}
+                  {active.map(d=><option key={d.id} value={d.id}>{d.name} ({d.college}) — {d.minutes||45} mins</option>)}
                 </select>
               </div>
             </div>
-            {err && <p className="text-red-500 text-xs mt-3 font-medium">{err}</p>}
+            {err&&<p className="text-red-500 text-xs mt-3 font-medium">{err}</p>}
             <Btn onClick={submit} disabled={checking} cls="mt-5 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-base">
-              {checking ? "Checking..." : "Start Exam →"}
+              {checking?"Checking...":"Start Exam →"}
             </Btn>
           </>
         )}
@@ -194,156 +178,151 @@ function RegistrationForm({ drives, onStart }) {
   );
 }
 
-// ── Exam Screen ───────────────────────────────────────────────────────────────
-function ExamScreen({ student, questions, onSubmit }) {
-  const totalSecs = (student.driveMinutes||45)*60;
-  const [answers,    setAnswers]    = useState({});
-  const [current,    setCurrent]    = useState(0);
-  const [timeLeft,   setTimeLeft]   = useState(totalSecs);
-  const [violations, setViolations] = useState(0);
-  const [warning,    setWarning]    = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const submittedRef  = useRef(false);
-  const answersRef    = useRef({});
-  const violationsRef = useRef(0);
-  const timerRef      = useRef();
+// ── Exam ──────────────────────────────────────────────────────────────────────
+function ExamScreen({student,questions,onSubmit}){
+  const totalSecs=(student.driveMinutes||45)*60;
+  const [answers,setAnswers]=useState({});
+  const [current,setCurrent]=useState(0);
+  const [timeLeft,setTimeLeft]=useState(totalSecs);
+  const [violations,setViolations]=useState(0);
+  const [warning,setWarning]=useState(null);
+  const [submitting,setSubmitting]=useState(false);
+  const submittedRef=useRef(false);
+  const answersRef=useRef({});
+  const violationsRef=useRef(0);
+  const timerRef=useRef();
 
-  useEffect(()=>{ answersRef.current = answers; },[answers]);
+  useEffect(()=>{answersRef.current=answers;},[answers]);
 
-  const doSubmit = useCallback(async (auto=false, reason="")=>{
-    if(submittedRef.current) return;
-    submittedRef.current = true;
+  const doSubmit=useCallback(async(auto=false,reason="")=>{
+    if(submittedRef.current)return;
+    submittedRef.current=true;
     clearInterval(timerRef.current);
     setSubmitting(true);
-    const ans = answersRef.current;
-    let score = 0;
-    const detail = questions.map(q=>{
-      const chosen = ans[q["Question No"]]||null;
-      const correct = q["Correct Answer"]?.trim().toUpperCase();
-      const isCorrect = chosen===correct;
-      if(isCorrect) score++;
-      return { qNo:q["Question No"], category:q.Category, question:q.Question, chosen, correct, isCorrect };
+    const ans=answersRef.current;
+    let score=0;
+    const detail=questions.map(q=>{
+      const chosen=ans[q["Question No"]]||null;
+      const correct=q["Correct Answer"]?.trim().toUpperCase();
+      const isCorrect=chosen===correct;
+      if(isCorrect)score++;
+      return{qNo:q["Question No"],category:q.Category,question:q.Question,chosen,correct,isCorrect};
     });
-    await onSubmit({ student, score, total:questions.length, detail, autoSubmit:auto, reason, timestamp:new Date().toISOString() });
+    await onSubmit({student,score,total:questions.length,detail,autoSubmit:auto,reason,timestamp:new Date().toISOString()});
   },[questions,student,onSubmit]);
 
   // Timer
   useEffect(()=>{
-    timerRef.current = setInterval(()=>{
-      setTimeLeft(t=>{ if(t<=1){ clearInterval(timerRef.current); doSubmit(true,"Time up"); return 0; } return t-1; });
+    timerRef.current=setInterval(()=>{
+      setTimeLeft(t=>{if(t<=1){clearInterval(timerRef.current);doSubmit(true,"Time up");return 0;}return t-1;});
     },1000);
-    return ()=>clearInterval(timerRef.current);
+    return()=>clearInterval(timerRef.current);
   },[doSubmit]);
 
-  // Tab violation detection with grace period
+  // Tab violation with grace period
   useEffect(()=>{
-    let violationTimer = null;
-    const handle = ()=>{
-      if(submittedRef.current) return;
-      if(!document.hidden){
-        if(violationTimer){ clearTimeout(violationTimer); violationTimer=null; }
-        return;
-      }
-      violationTimer = setTimeout(()=>{
-        violationTimer = null;
-        if(!document.hidden||submittedRef.current) return;
-        violationsRef.current += 1;
-        const nv = violationsRef.current;
+    let vTimer=null;
+    const handle=()=>{
+      if(submittedRef.current)return;
+      if(!document.hidden){if(vTimer){clearTimeout(vTimer);vTimer=null;}return;}
+      vTimer=setTimeout(()=>{
+        vTimer=null;
+        if(!document.hidden||submittedRef.current)return;
+        violationsRef.current+=1;
+        const nv=violationsRef.current;
         setViolations(nv);
         if(nv>=MAX_VIOLATIONS){
-          setWarning({ msg:`Tab switch limit reached (${MAX_VIOLATIONS}/${MAX_VIOLATIONS}). Your exam is being auto-submitted.`, fatal:true });
+          setWarning({msg:`Tab switch limit reached (${MAX_VIOLATIONS}/${MAX_VIOLATIONS}). Your exam is being auto-submitted.`,fatal:true});
           setTimeout(()=>doSubmit(true,"Tab switch violations"),2500);
-        } else {
-          setWarning({ msg:`⚠️ Tab switch detected! Warning ${nv}/${MAX_VIOLATIONS}. Exam will be auto-submitted on next violation.`, fatal:false });
+        }else{
+          setWarning({msg:`⚠️ Tab switch detected! Warning ${nv}/${MAX_VIOLATIONS}. Exam will be auto-submitted on next violation.`,fatal:false});
         }
       },1500);
     };
-    document.addEventListener("visibilitychange", handle);
-    return ()=>{ document.removeEventListener("visibilitychange", handle); if(violationTimer) clearTimeout(violationTimer); };
+    document.addEventListener("visibilitychange",handle);
+    return()=>{document.removeEventListener("visibilitychange",handle);if(vTimer)clearTimeout(vTimer);};
   },[doSubmit]);
 
-  // Block right-click
+  // Picture-in-Picture block
   useEffect(()=>{
-    const handler = e => e.preventDefault();
-    document.addEventListener("contextmenu", handler);
-    return ()=> document.removeEventListener("contextmenu", handler);
-  },[]);
-
-  // Block keyboard shortcuts (DevTools, copy, view-source etc.)
-  useEffect(()=>{
-    const handler = e => {
-      const blocked = (
-        e.key === "F12" ||
-        (e.ctrlKey && ["u","U","s","S","a","A","c","C","v","V","p","P"].includes(e.key)) ||
-        (e.ctrlKey && e.shiftKey && ["i","I","j","J","c","C"].includes(e.key))
-      );
-      if(blocked) e.preventDefault();
-    };
-    document.addEventListener("keydown", handler);
-    return ()=> document.removeEventListener("keydown", handler);
-  },[]);
-
-  // Picture-in-Picture detection & auto-exit
-  useEffect(()=>{
-    const handlePiP = async () => {
+    const handle=async()=>{
       if(document.pictureInPictureElement){
-        try { await document.exitPictureInPicture(); } catch {}
-        // Count as violation
+        try{await document.exitPictureInPicture();}catch{}
         if(!submittedRef.current){
-          violationsRef.current += 1;
-          const nv = violationsRef.current;
+          violationsRef.current+=1;
+          const nv=violationsRef.current;
           setViolations(nv);
-          if(nv >= MAX_VIOLATIONS){
-            setWarning({ msg:`Picture-in-Picture detected. Violation limit reached (${MAX_VIOLATIONS}/${MAX_VIOLATIONS}). Your exam is being auto-submitted.`, fatal:true });
-            setTimeout(()=>doSubmit(true,"PiP + Tab violations"),2500);
-          } else {
-            setWarning({ msg:`⚠️ Picture-in-Picture is not allowed during the exam! Warning ${nv}/${MAX_VIOLATIONS}.`, fatal:false });
+          if(nv>=MAX_VIOLATIONS){
+            setWarning({msg:`PiP violation limit reached. Your exam is being auto-submitted.`,fatal:true});
+            setTimeout(()=>doSubmit(true,"PiP violations"),2500);
+          }else{
+            setWarning({msg:`⚠️ Picture-in-Picture is not allowed! Warning ${nv}/${MAX_VIOLATIONS}.`,fatal:false});
           }
         }
       }
     };
-    document.addEventListener("enterpictureinpicture", handlePiP);
-    return ()=> document.removeEventListener("enterpictureinpicture", handlePiP);
+    document.addEventListener("enterpictureinpicture",handle);
+    return()=>document.removeEventListener("enterpictureinpicture",handle);
   },[doSubmit]);
-    window.history.pushState(null,"",window.location.href);
-    const onPop=()=>window.history.pushState(null,"",window.location.href);
-    window.addEventListener("popstate",onPop);
-    return ()=>window.removeEventListener("popstate",onPop);
+
+  // Disable right-click
+  useEffect(()=>{
+    const h=e=>e.preventDefault();
+    document.addEventListener("contextmenu",h);
+    return()=>document.removeEventListener("contextmenu",h);
   },[]);
 
-  if(submitting) return <Spinner msg="Submitting your exam... please wait."/>;
+  // Block keyboard shortcuts
+  useEffect(()=>{
+    const h=e=>{
+      const blocked=e.key==="F12"||(e.ctrlKey&&["u","U","s","S","a","A","c","C","v","V","p","P"].includes(e.key))||(e.ctrlKey&&e.shiftKey&&["i","I","j","J","c","C"].includes(e.key));
+      if(blocked)e.preventDefault();
+    };
+    document.addEventListener("keydown",h);
+    return()=>document.removeEventListener("keydown",h);
+  },[]);
 
-  const answered  = Object.keys(answers).length;
-  const unanswered= questions.length - answered;
-  const pct       = Math.round((answered/questions.length)*100);
-  const danger    = timeLeft < 300;
-  const q         = questions[current];
-  const opts      = ["A","B","C","D"];
+  // Block back button
+  useEffect(()=>{
+    window.history.pushState(null,"",window.location.href);
+    const h=()=>window.history.pushState(null,"",window.location.href);
+    window.addEventListener("popstate",h);
+    return()=>window.removeEventListener("popstate",h);
+  },[]);
 
-  const confirmSubmit = ()=>{
-    const msg = unanswered>0 ? `You have ${unanswered} unanswered question(s). Submit anyway?` : "All questions answered. Submit exam?";
-    if(window.confirm(msg)) doSubmit(false,"Manual submit");
+  if(submitting)return <Spinner msg="Submitting your exam... please wait."/>;
+
+  const answered=Object.keys(answers).length;
+  const unanswered=questions.length-answered;
+  const pct=Math.round((answered/questions.length)*100);
+  const danger=timeLeft<300;
+  const q=questions[current];
+  const opts=["A","B","C","D"];
+
+  const confirmSubmit=()=>{
+    const msg=unanswered>0?`You have ${unanswered} unanswered question(s). Submit anyway?`:"All questions answered. Submit exam?";
+    if(window.confirm(msg))doSubmit(false,"Manual submit");
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 select-none exam-active">
-      {warning && (
+  return(
+    <div className="min-h-screen bg-gray-50 exam-lock">
+      {warning&&(
         <div className="fixed inset-0 z-50 bg-black bg-opacity-75 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm text-center">
             <div className="text-4xl mb-3">{warning.fatal?"🚫":"🚨"}</div>
             <p className="text-gray-800 font-semibold text-base">{warning.msg}</p>
-            {!warning.fatal && <Btn onClick={()=>setWarning(null)} cls="mt-5 bg-red-600 hover:bg-red-700 text-white w-full">I Understand — Return to Exam</Btn>}
+            {!warning.fatal&&<Btn onClick={()=>setWarning(null)} cls="mt-5 bg-red-600 hover:bg-red-700 text-white w-full">I Understand — Return to Exam</Btn>}
           </div>
         </div>
       )}
-
+      {/* Header */}
       <div className="bg-white border-b shadow-sm px-4 py-3 sticky top-0 z-40">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-3 flex-wrap">
           <div className="text-sm min-w-0">
             <span className="font-bold text-gray-800">{student.name}</span>
             <span className="text-gray-400 ml-2 text-xs hidden sm:inline">· {student.driveName}</span>
           </div>
-          <div className={`font-mono text-xl font-bold px-5 py-1.5 rounded-full flex-shrink-0 ${danger?"bg-red-100 text-red-600 animate-pulse":"bg-blue-100 text-blue-700"}`}>
+          <div className={`font-mono text-xl font-bold px-5 py-1.5 rounded-full flex-shrink-0 ${danger?"bg-red-100 text-red-600 pulse":"bg-blue-100 text-blue-700"}`}>
             ⏱ {fmtTime(timeLeft)}
           </div>
           <Btn onClick={confirmSubmit} cls="bg-green-600 hover:bg-green-700 text-white flex-shrink-0">✓ Complete Test</Btn>
@@ -363,27 +342,25 @@ function ExamScreen({ student, questions, onSubmit }) {
             <div className="bg-green-500 h-2 rounded-full transition-all duration-300" style={{width:`${pct}%`}}/>
           </div>
         </div>
-        {violations>0 && <div className="max-w-4xl mx-auto mt-1"><p className="text-xs text-red-500 font-semibold">⚠️ Tab switch warnings: {violations}/{MAX_VIOLATIONS}</p></div>}
+        {violations>0&&<div className="max-w-4xl mx-auto mt-1"><p className="text-xs text-red-500 font-semibold">⚠️ Violations: {violations}/{MAX_VIOLATIONS}</p></div>}
       </div>
-
+      {/* Body */}
       <div className="max-w-4xl mx-auto p-4 grid gap-4" style={{gridTemplateColumns:"1fr 180px"}}>
         <div>
           <div className="bg-white rounded-xl shadow p-6 mb-4">
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">{q.Category}</span>
-              {q["Sub-Type"] && <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">{q["Sub-Type"]}</span>}
+              {q["Sub-Type"]&&<span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">{q["Sub-Type"]}</span>}
             </div>
             <p className="text-gray-800 font-medium text-base leading-relaxed mb-5">{q.Question}</p>
             <div className="space-y-3">
               {opts.map(opt=>{
-                const val=q[`Option ${opt}`]; if(!val) return null;
+                const val=q[`Option ${opt}`];if(!val)return null;
                 const sel=answers[q["Question No"]]===opt;
-                return (
+                return(
                   <div key={opt} onClick={()=>setAnswers(p=>({...p,[q["Question No"]]:opt}))}
-                    className={`flex items-center gap-3 border-2 rounded-xl px-4 py-3 cursor-pointer transition
-                      ${sel?"border-blue-500 bg-blue-50":"border-gray-200 hover:border-blue-300 hover:bg-gray-50"}`}>
-                    <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
-                      ${sel?"bg-blue-600 text-white":"bg-gray-100 text-gray-600"}`}>{opt}</span>
+                    className={`flex items-center gap-3 border-2 rounded-xl px-4 py-3 cursor-pointer transition ${sel?"border-blue-500 bg-blue-50":"border-gray-200 hover:border-blue-300 hover:bg-gray-50"}`}>
+                    <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${sel?"bg-blue-600 text-white":"bg-gray-100 text-gray-600"}`}>{opt}</span>
                     <span className="text-sm text-gray-700">{val}</span>
                   </div>
                 );
@@ -402,9 +379,7 @@ function ExamScreen({ student, questions, onSubmit }) {
             <div className="grid grid-cols-5 gap-1 max-h-64 overflow-y-auto pb-1">
               {questions.map((q2,i)=>(
                 <button key={i} onClick={()=>setCurrent(i)}
-                  className={`w-8 h-8 rounded text-xs font-bold transition
-                    ${i===current?"ring-2 ring-blue-500 ring-offset-1":""}
-                    ${answers[q2["Question No"]]?"bg-green-500 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+                  className={`w-8 h-8 rounded text-xs font-bold transition ${i===current?"ring-2 ring-blue-500 ring-offset-1":""} ${answers[q2["Question No"]]?"bg-green-500 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
                   {i+1}
                 </button>
               ))}
@@ -422,10 +397,10 @@ function ExamScreen({ student, questions, onSubmit }) {
 }
 
 // ── Admin Login ───────────────────────────────────────────────────────────────
-function AdminLogin({ onLogin, onClose }) {
-  const [pw,setPw]=useState(""); const [err,setErr]=useState("");
-  const check=()=>{ if(pw===ADMIN_SECRET) onLogin(); else setErr("Incorrect password."); };
-  return (
+function AdminLogin({onLogin,onClose}){
+  const [pw,setPw]=useState("");const [err,setErr]=useState("");
+  const check=()=>{if(pw===ADMIN_SECRET)onLogin();else setErr("Incorrect password.");};
+  return(
     <div className="fixed inset-0 z-50 bg-black bg-opacity-60 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
         <div className="text-4xl mb-3">🔐</div>
@@ -434,7 +409,7 @@ function AdminLogin({ onLogin, onClose }) {
         <input type="password" autoFocus
           className="w-full border border-gray-300 rounded px-3 py-2 text-sm mb-3 focus:outline-none focus:border-blue-500"
           placeholder="Enter admin password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&check()}/>
-        {err && <p className="text-red-500 text-xs mb-2">{err}</p>}
+        {err&&<p className="text-red-500 text-xs mb-2">{err}</p>}
         <div className="flex gap-2">
           <Btn onClick={onClose} cls="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600">Cancel</Btn>
           <Btn onClick={check}   cls="flex-1 bg-gray-800 hover:bg-gray-900 text-white">Login</Btn>
@@ -445,182 +420,164 @@ function AdminLogin({ onLogin, onClose }) {
 }
 
 // ── Distribution Editor ───────────────────────────────────────────────────────
-function DistributionEditor({ questions, value, onChange }) {
-  const byCategory = {};
-  questions.forEach(q=>{ const c=q.Category||"General"; if(!byCategory[c]) byCategory[c]=[]; byCategory[c].push(q); });
-  const total = Object.values(value).reduce((a,b)=>a+(parseInt(b)||0),0);
-  return (
+function DistributionEditor({questions,value,onChange}){
+  const byC={};
+  questions.forEach(q=>{const c=q.Category||"General";if(!byC[c])byC[c]=[];byC[c].push(q);});
+  const total=Object.values(value).reduce((a,b)=>a+(parseInt(b)||0),0);
+  return(
     <div>
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Questions per Category</p>
         <span className={`text-xs font-bold px-2 py-1 rounded-full ${total>0?"bg-blue-100 text-blue-700":"bg-gray-100 text-gray-500"}`}>Total: {total}</span>
       </div>
       <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
-        {Object.keys(byCategory).map(cat=>(
+        {Object.keys(byC).map(cat=>(
           <div key={cat} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
             <span className="text-xs text-gray-700 flex-1 truncate" title={cat}>{cat}</span>
-            <span className="text-xs text-gray-400">/{byCategory[cat].length}</span>
-            <input type="number" min="0" max={byCategory[cat].length}
+            <span className="text-xs text-gray-400">/{byC[cat].length}</span>
+            <input type="number" min="0" max={byC[cat].length}
               className="w-14 border border-gray-300 rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-blue-500"
-              value={value[cat]??""} onChange={e=>onChange({...value,[cat]:e.target.value===""?"":Math.min(parseInt(e.target.value)||0,byCategory[cat].length)})}/>
+              value={value[cat]??""} onChange={e=>onChange({...value,[cat]:e.target.value===""?"":Math.min(parseInt(e.target.value)||0,byC[cat].length)})}/>
           </div>
         ))}
       </div>
-      {total===0 && <p className="text-orange-500 text-xs mt-2">⚠️ Set at least 1 question per category.</p>}
+      {total===0&&<p className="text-orange-500 text-xs mt-2">⚠️ Set at least 1 question per category.</p>}
     </div>
   );
 }
 
 // ── Admin Panel ───────────────────────────────────────────────────────────────
-function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results, drives, setDrives, onLogout }) {
-  const [tab,         setTab]         = useState("drives");
-  const [newDrive,    setNewDrive]    = useState({name:"",college:"",minutes:45,passPct:60,active:true});
-  const [editField,   setEditField]   = useState({});
-  const [distDriveId, setDistDriveId] = useState(null);
-  const [tempDist,    setTempDist]    = useState({});
-  const [filterDrive, setFilterDrive] = useState("all");
-  const [searchTerm,  setSearchTerm]  = useState("");
-  const [sortOrder,   setSortOrder]   = useState("newest");
-  const [saving,      setSaving]      = useState(false);
+function AdminPanel({questions,setQuestions,qBankMeta,setQBankMeta,results,drives,setDrives,onLogout}){
+  const [tab,setTab]=useState("drives");
+  const [newDrive,setNewDrive]=useState({name:"",college:"",minutes:45,passPct:60,active:true});
+  const [editField,setEditField]=useState({});
+  const [distDriveId,setDistDriveId]=useState(null);
+  const [tempDist,setTempDist]=useState({});
+  const [filterDrive,setFilterDrive]=useState("all");
+  const [searchTerm,setSearchTerm]=useState("");
+  const [sortOrder,setSortOrder]=useState("newest");
+  const [saving,setSaving]=useState(false);
+  const fileRef=useRef();
 
-  const clearData = async (mode) => {
-    const msgs = {
-      all:      "⚠️ This will delete ALL drives, results, attempts AND the question bank.\n\nAre you sure?",
-      results:  "This will delete all results and attempt locks (students can re-attempt).\n\nQuestion bank and drives will be kept.\n\nProceed?",
-    };
-    if(!window.confirm(msgs[mode])) return;
-    setSaving(true);
-    try {
-      if(mode==="all" || mode==="results"){
-        const res = await fsGetAll("results");
-        for(const r of res) await fsDelete("results", r.id);
-        const att = await fsGetAll("attempts");
-        for(const a of att) await fsDelete("attempts", a.id);
-      }
-      if(mode==="all"){
-        const drvs = await fsGetAll("drives");
-        for(const d of drvs) await fsDelete("drives", d.id);
-        await fsDelete("questions","bank");
-        setQuestions([]); setQBankMeta(null);
-      }
-      setSaving(false);
-      alert(`✅ Cleared successfully.`);
-    } catch(e){ setSaving(false); alert("Error: "+e.message); }
-  };
-  const fileRef = useRef();
+  const byC={};
+  questions.forEach(q=>{const c=q.Category||"General";if(!byC[c])byC[c]=[];byC[c].push(q);});
 
-  const byCategory = {};
-  questions.forEach(q=>{ const c=q.Category||"General"; if(!byCategory[c]) byCategory[c]=[]; byCategory[c].push(q); });
-
-  const uploadCSV = e=>{
-    const file=e.target.files[0]; if(!file) return;
-    const isReplace = questions.length > 0;
-    if(isReplace && !window.confirm(`You already have ${questions.length} questions loaded.\n\nReplacing will affect all future exams (existing results are unaffected).\n\nProceed?`)){
-      e.target.value=""; return;
-    }
+  // ── Question upload ───────────────────────────────────────────────────────
+  const uploadCSV=e=>{
+    const file=e.target.files[0];if(!file)return;
+    const isReplace=questions.length>0;
+    if(isReplace&&!window.confirm(`You already have ${questions.length} questions loaded.\n\nReplacing will affect all future exams (existing results are unaffected).\n\nProceed?`)){e.target.value="";return;}
     const r=new FileReader();
     r.onload=async ev=>{
-      try {
+      try{
         const qs=parseCSV(ev.target.result);
-        if(!qs.length) return alert("No valid questions found in CSV.");
+        if(!qs.length)return alert("No valid questions found.");
         setSaving(true);
-        await fsSet("questions","bank",{ data: JSON.stringify(qs), count: qs.length, updatedAt: new Date().toISOString(), fileName: file.name });
+        await fsSet("questions","bank",{data:JSON.stringify(qs),count:qs.length,updatedAt:new Date().toISOString(),fileName:file.name});
         setQuestions(qs);
-        setQBankMeta({ count: qs.length, updatedAt: new Date().toLocaleString("en-IN"), fileName: file.name });
+        setQBankMeta({count:qs.length,updatedAt:new Date().toLocaleString("en-IN"),fileName:file.name});
         setSaving(false);
-        alert(`✅ ${isReplace?"Replaced":"Loaded"} question bank — ${qs.length} questions saved to Firebase.`);
-      } catch(err) { setSaving(false); alert("Failed to save questions: "+err.message); }
+        alert(`✅ ${isReplace?"Replaced":"Loaded"} — ${qs.length} questions saved.`);
+      }catch(e){setSaving(false);alert("Failed: "+e.message);}
     };
-    r.readAsText(file); e.target.value="";
+    r.readAsText(file);e.target.value="";
   };
 
-  const addDrive = async ()=>{
-    if(!newDrive.name||!newDrive.college) return alert("Fill drive name and college.");
-    if(!questions.length) return alert("Upload question bank first.");
-    const dist = buildAutoDistribution(questions);
-    const id = Date.now().toString();
-    const drive = {...newDrive, minutes:parseInt(newDrive.minutes)||45, passPct:parseInt(newDrive.passPct)||60, distribution:dist, createdAt:new Date().toISOString(), id};
+  // ── Drive operations ──────────────────────────────────────────────────────
+  const addDrive=async()=>{
+    if(!newDrive.name||!newDrive.college)return alert("Fill drive name and college.");
+    if(!questions.length)return alert("Upload question bank first.");
+    const id=Date.now().toString();
+    const drive={...newDrive,minutes:parseInt(newDrive.minutes)||45,passPct:parseInt(newDrive.passPct)||60,distribution:buildAutoDist(questions),createdAt:new Date().toISOString(),id};
     setSaving(true);
-    try {
-      await fsSet("drives", id, drive);
-      setNewDrive({name:"",college:"",minutes:45,passPct:60,active:true});
-    } catch(e) { alert("Error saving drive: "+e.message); }
+    try{await fsSet("drives",id,drive);setNewDrive({name:"",college:"",minutes:45,passPct:60,active:true});}
+    catch(e){alert("Error: "+e.message);}
     setSaving(false);
-    // No manual setDrives — listener handles it
   };
 
-  const openDistEditor = d=>{ setDistDriveId(d.id); setTempDist({...d.distribution}); };
-
-  const saveDistribution = async ()=>{
+  const openDist=d=>{setDistDriveId(d.id);setTempDist({...d.distribution});};
+  const saveDist=async()=>{
     const total=Object.values(tempDist).reduce((a,b)=>a+(parseInt(b)||0),0);
-    if(total===0) return alert("Total must be > 0.");
+    if(total===0)return alert("Total must be > 0.");
     const dist=Object.fromEntries(Object.entries(tempDist).map(([k,v])=>[k,parseInt(v)||0]));
     setSaving(true);
-    try {
-      const drive=drives.find(d=>d.id===distDriveId);
-      await fsSet("drives",distDriveId,{...drive,distribution:dist});
-      setDistDriveId(null);
-    } catch(e) { alert("Error: "+e.message); }
+    try{await fsSet("drives",distDriveId,{...drives.find(d=>d.id===distDriveId),distribution:dist});setDistDriveId(null);}
+    catch(e){alert("Error: "+e.message);}
     setSaving(false);
   };
 
-  const saveField = async (id,field)=>{
-    const key=`${id}_${field}`, val=parseInt(editField[key]);
-    if(field==="minutes"&&(!val||val<5||val>180)) return alert("5–180 mins.");
-    if(field==="passPct"&&(!val||val<1||val>100)) return alert("1–100%.");
+  const saveField=async(id,field)=>{
+    const key=`${id}_${field}`,val=parseInt(editField[key]);
+    if(field==="minutes"&&(!val||val<5||val>180))return alert("5–180 mins.");
+    if(field==="passPct"&&(!val||val<1||val>100))return alert("1–100%.");
     setSaving(true);
-    try {
-      const drive=drives.find(d=>d.id===id);
-      await fsSet("drives",id,{...drive,[field]:val});
-      setEditField(p=>{const n={...p};delete n[key];return n;});
-    } catch(e) { alert("Error: "+e.message); }
+    try{await fsSet("drives",id,{...drives.find(d=>d.id===id),[field]:val});setEditField(p=>{const n={...p};delete n[key];return n;});}
+    catch(e){alert("Error: "+e.message);}
     setSaving(false);
   };
 
-  const toggleDrive = async id=>{
-    const drive=drives.find(d=>d.id===id);
-    try { await fsSet("drives",id,{...drive,active:!drive.active}); }
-    catch(e) { alert("Error: "+e.message); }
+  const toggleDrive=async id=>{
+    const d=drives.find(x=>x.id===id);
+    try{await fsSet("drives",id,{...d,active:!d.active});}catch(e){alert("Error: "+e.message);}
   };
 
-  const deleteDrive = async id=>{
-    if(!window.confirm("Delete drive? Results stay.")) return;
-    try { await fsDelete("drives",id); }
-    catch(e) { alert("Error: "+e.message); }
+  const deleteDrive=async id=>{
+    if(!window.confirm("Delete drive? Results stay."))return;
+    try{await fsDel("drives",id);}catch(e){alert("Error: "+e.message);}
   };
 
-  const filteredResults = (filterDrive==="all"?results:results.filter(r=>r.student.driveId===filterDrive))
+  // ── Clear data ────────────────────────────────────────────────────────────
+  const clearData=async mode=>{
+    const msgs={
+      results:"This will delete all results and attempt locks.\nQuestion bank and drives are kept.\n\nProceed?",
+      all:"⚠️ This will delete EVERYTHING including questions and drives.\n\nAre you sure?"
+    };
+    if(!window.confirm(msgs[mode]))return;
+    setSaving(true);
+    try{
+      const res=await fsAll("results");for(const r of res)await fsDel("results",r.id);
+      const att=await fsAll("attempts");for(const a of att)await fsDel("attempts",a.id);
+      if(mode==="all"){
+        const drvs=await fsAll("drives");for(const d of drvs)await fsDel("drives",d.id);
+        await fsDel("questions","bank");
+        setQuestions([]);setQBankMeta(null);
+      }
+      alert("✅ Cleared successfully.");
+    }catch(e){alert("Error: "+e.message);}
+    setSaving(false);
+  };
+
+  // ── Export CSV ────────────────────────────────────────────────────────────
+  const filteredResults=(filterDrive==="all"?results:results.filter(r=>r.student.driveId===filterDrive))
     .filter(r=>!searchTerm||r.student.name.toLowerCase().includes(searchTerm.toLowerCase())||r.student.email.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a,b)=>{
-      const pA=(a.score/a.total)*100, pB=(b.score/b.total)*100;
-      if(sortOrder==="pct_desc") return pB-pA;
-      if(sortOrder==="pct_asc")  return pA-pB;
-      if(sortOrder==="name_asc") return a.student.name.localeCompare(b.student.name);
+      const pA=(a.score/a.total)*100,pB=(b.score/b.total)*100;
+      if(sortOrder==="pct_desc")return pB-pA;if(sortOrder==="pct_asc")return pA-pB;
+      if(sortOrder==="name_asc")return a.student.name.localeCompare(b.student.name);
       if(sortOrder==="name_desc")return b.student.name.localeCompare(a.student.name);
-      if(sortOrder==="oldest")   return new Date(a.timestamp)-new Date(b.timestamp);
+      if(sortOrder==="oldest")return new Date(a.timestamp)-new Date(b.timestamp);
       return new Date(b.timestamp)-new Date(a.timestamp);
     });
 
-  const exportCSV = ()=>{
-    if(!filteredResults.length) return alert("No results to export.");
+  const exportCSV=()=>{
+    if(!filteredResults.length)return alert("No results to export.");
     const rows=[["Name","Degree","Batch","Mobile","Email","College","Drive","Date","Score","Total","Percentage","Pass/Fail","Submit Reason","Questions Used"]];
     filteredResults.forEach(r=>{
       const drive=drives.find(d=>d.id===r.student.driveId);
-      const threshold=drive?.passPct||r.student.drivePassPct||60;
+      const t=drive?.passPct||r.student.drivePassPct||60;
       const pct=((r.score/r.total)*100).toFixed(1);
-      const pass=parseFloat(pct)>=threshold;
-      rows.push([r.student.name,r.student.degree,r.student.batch,r.student.mobile,r.student.email,r.student.college,r.student.driveName||"",r.student.date,r.score,r.total,pct+"%",pass?"Pass":"Fail",r.reason||"",r.detail.map(d=>d.qNo).join(";")]);
+      rows.push([r.student.name,r.student.degree,r.student.batch,r.student.mobile,r.student.email,r.student.college,r.student.driveName||"",r.student.date,r.score,r.total,pct+"%",parseFloat(pct)>=t?"Pass":"Fail",r.reason||"",r.detail.map(d=>d.qNo).join(";")]);
     });
     const csv=rows.map(row=>row.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-    a.download=`results_${Date.now()}.csv`; a.click();
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+    a.download=`results_${Date.now()}.csv`;a.click();
   };
 
-  const tabs=[["drives","🏫 Drives"],["questions","📋 Questions"],["results","📊 Results"],["manual","📖 Manual"]];
   const inp="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500";
+  const tabs=[["drives","🏫 Drives"],["questions","📋 Questions"],["results","📊 Results"],["manual","📖 Manual"]];
 
   const InlineEdit=({driveId,field,current,suffix=""})=>{
-    const key=`${driveId}_${field}`, editing=editField[key]!==undefined;
+    const key=`${driveId}_${field}`,editing=editField[key]!==undefined;
     return editing?(
       <div className="flex items-center gap-1">
         <input type="number" className="border rounded px-2 py-1 text-xs w-16 focus:outline-none"
@@ -637,9 +594,74 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
     );
   };
 
-  return (
+  const MANUAL_SECTIONS=[
+    {icon:"🚀",title:"Getting Started",items:[
+      ["Step 1 — Upload Question Bank","Go to the Questions tab and upload your CSV. Required columns: Question No, Category, Sub-Type, Question, Option A, Option B, Option C, Option D, Correct Answer, Explanation. Questions are stored in Firebase and reused across all drives."],
+      ["Step 2 — Create a Placement Drive","Go to Drives tab. Fill Drive Name, College, Duration (mins), Pass % Threshold. Click Add Drive."],
+      ["Step 3 — Configure Question Distribution","After creating a drive, click the Qs ✏️ button to set how many questions to pick per category. Default is auto-balanced to 50 questions total."],
+      ["Step 4 — Activate the Drive","Only Active drives appear in the student registration form. Deactivate after exam day."],
+      ["Step 5 — Share the URL","Share your GitHub Pages URL with students. They register and take the exam from any browser — no login or install needed."],
+    ]},
+    {icon:"🏫",title:"Managing Drives",items:[
+      ["Active vs Inactive","Active drives appear in the student registration dropdown. Inactive drives are hidden from students but results remain accessible."],
+      ["Duration","Set per drive. Editable inline anytime via ✏️. Changes apply to new sessions only."],
+      ["Pass % Threshold","Set per drive. Default 60%. Editable inline. Each result is evaluated against the drive's threshold."],
+      ["Question Distribution","Each drive has its own distribution. If you replace the question bank, re-open distribution editor to revalidate counts."],
+      ["Deleting a Drive","Removes it from student form but does NOT delete its results. Results remain under All Drives in Results tab."],
+    ]},
+    {icon:"📋",title:"Question Bank",items:[
+      ["Single Shared Bank","One CSV is used across all drives. Each drive picks questions based on its own distribution config."],
+      ["Replacing the Bank","Click 'Replace Question Bank'. A confirmation is shown before replacing. Existing results are never affected."],
+      ["CSV Format","Correct Answer must be A, B, C, or D (uppercase). All 10 columns are required."],
+      ["Category Breakdown","After upload, each category is shown with its question count as a pill badge."],
+    ]},
+    {icon:"👨‍🎓",title:"Student Registration Rules",items:[
+      ["Required Fields","Full Name, Degree, Batch, 10-digit Mobile, Email, College Name, and Drive selection are all mandatory."],
+      ["Re-attempt Prevention","Students are identified by Email + Drive ID. Once submitted, that combination is locked in Firebase permanently."],
+      ["Re-attempt Reset","To allow a specific student to re-attempt: Firebase Console → Firestore → attempts collection → delete their email__driveId document."],
+    ]},
+    {icon:"🛡️",title:"Exam Security Rules",items:[
+      ["Tab Switch Detection","Uses Page Visibility API. Switching away for more than 1.5 seconds counts as a violation. 3 violations = auto-submit."],
+      ["Grace Period","1.5-second grace period before counting a violation. Absorbs OS notifications and brief accidental clicks."],
+      ["Picture-in-Picture Blocked","PiP mode is immediately exited and counted as a violation. Students cannot overlay AI tools."],
+      ["Right-Click Disabled","Context menu disabled during exam — prevents Inspect Element, Save As, etc."],
+      ["Keyboard Shortcuts Blocked","F12, Ctrl+U, Ctrl+C/V, Ctrl+S, Ctrl+P, Ctrl+Shift+I/J/C all blocked during exam."],
+      ["Text Selection Disabled","Question text and options cannot be selected or copied."],
+      ["Back Button Blocked","Browser back navigation is intercepted and disabled during exam."],
+      ["Timer Auto-Submit","When timer reaches 0, exam is auto-submitted with whatever answers the student has given."],
+      ["Violation Logging","Submit reason (Manual / Time up / Tab switch / PiP) is recorded in every result and exported CSV."],
+    ]},
+    {icon:"📊",title:"Results & Reporting",items:[
+      ["Real-Time Results","Results appear instantly as students submit — no refresh needed. Powered by Firestore real-time listeners."],
+      ["Per-Drive Filtering","Filter by drive. Each drive shows its student count separately."],
+      ["Search & Sort","Search by name or email. Sort by: Newest, Oldest, Score High→Low, Score Low→High, Name A→Z/Z→A."],
+      ["Summary Cards","Total Appeared, Passed, and Average Score shown for the current filter."],
+      ["Category Breakdown","Each result can be expanded to show per-category correct/incorrect counts."],
+      ["Question Audit Trail","Every result stores the exact question numbers used. Visible in expanded result and exported CSV."],
+      ["CSV Export","Export columns: Name, Degree, Batch, Mobile, Email, College, Drive, Date, Score, Total, Percentage, Pass/Fail, Submit Reason, Questions Used."],
+    ]},
+    {icon:"🗄️",title:"Data Management",items:[
+      ["Clear Results & Attempts","Wipes all results and re-attempt locks. Questions and drives are kept. Use before a real drive after testing."],
+      ["Clear Everything","Full wipe — all drives, results, attempts, and question bank deleted."],
+      ["Firebase Free Tier","1 GB storage, 50,000 reads/day, 20,000 writes/day. At ~10 KB per result, supports 100,000+ results. Data never expires automatically."],
+    ]},
+    {icon:"🔐",title:"Admin Access",items:[
+      ["Secret Access","Admin panel is opened via Ctrl+Shift+A on any screen. Not visible to students."],
+      ["Password","Default: cybercom@2024. To change: update ADMIN_SECRET in the HTML file and redeploy."],
+      ["Session","Admin sessions are in-memory. Refreshing the page logs you out."],
+    ]},
+    {icon:"📅",title:"Recommended Workflow Per Drive",items:[
+      ["Before the Drive","1. Verify question bank is current. 2. Create drive with correct details. 3. Configure distribution. 4. Activate drive. 5. Share URL with college coordinator."],
+      ["During the Drive","Monitor Results tab in real time. Watch for tab violation or time-up auto-submits."],
+      ["After the Drive","1. Export results CSV. 2. Deactivate the drive. 3. Share results with HR/management."],
+      ["Before Next Drive","Use Clear Results & Attempts if you want a clean slate. Otherwise all drive results accumulate and remain filterable."],
+    ]},
+  ];
+
+  return(
     <div className="min-h-screen bg-gray-50">
-      {distDriveId && (
+      {/* Distribution modal */}
+      {distDriveId&&(
         <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg">
             <h3 className="font-bold text-gray-800 mb-1">Configure Questions — {drives.find(d=>d.id===distDriveId)?.name}</h3>
@@ -647,22 +669,23 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
             <DistributionEditor questions={questions} value={tempDist} onChange={setTempDist}/>
             <div className="flex gap-2 mt-5">
               <Btn onClick={()=>setDistDriveId(null)} cls="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700">Cancel</Btn>
-              <Btn onClick={saveDistribution} disabled={saving} cls="flex-1 bg-blue-600 hover:bg-blue-700 text-white">{saving?"Saving...":"Save"}</Btn>
+              <Btn onClick={saveDist} disabled={saving} cls="flex-1 bg-blue-600 hover:bg-blue-700 text-white">{saving?"Saving...":"Save"}</Btn>
             </div>
           </div>
         </div>
       )}
 
+      {/* Header */}
       <div className="bg-white border-b shadow-sm px-6 py-4 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-lg font-bold text-gray-800">Admin Panel</h1>
-          <p className="text-xs text-gray-400">Cybercom Creation · {questions.length} questions · {drives.filter(d=>d.active).length} active drives · {results.length} results
-            {saving && <span className="ml-2 text-blue-500 font-semibold">· Saving...</span>}
-          </p>
+          <p className="text-xs text-gray-400">Cybercom Creation · {questions.length} questions · {drives.filter(d=>d.active).length} active drives · {results.length} results{saving&&<span className="ml-2 text-blue-500 font-semibold">· Saving...</span>}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${tab===k?"bg-blue-600 text-white":"bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>{l}</button>)}
+          {tabs.map(([k,l])=>(
+            <button key={k} onClick={()=>setTab(k)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${tab===k?"bg-blue-600 text-white":"bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>{l}</button>
+          ))}
           <div className="relative group">
             <Btn cls="bg-orange-100 hover:bg-orange-200 text-orange-700">🗑 Clear Data ▾</Btn>
             <div className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-gray-100 z-50 hidden group-hover:block">
@@ -682,12 +705,12 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
 
       <div className="max-w-5xl mx-auto p-6">
 
-        {/* Drives */}
-        {tab==="drives" && (
+        {/* ── Drives ── */}
+        {tab==="drives"&&(
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow p-6">
               <h3 className="font-bold text-gray-700 mb-4">Create New Placement Drive</h3>
-              {!questions.length && <p className="text-orange-500 text-xs mb-3 font-semibold">⚠️ Upload question bank first (Questions tab).</p>}
+              {!questions.length&&<p className="text-orange-500 text-xs mb-3 font-semibold">⚠️ Upload question bank first (Questions tab).</p>}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Drive Name</label>
@@ -719,17 +742,17 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
                   <tr>{["Drive","College","Duration","Pass %","Questions","Status","Actions"].map(h=><th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase whitespace-nowrap">{h}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {drives.length===0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No drives yet.</td></tr>}
+                  {drives.length===0&&<tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No drives yet.</td></tr>}
                   {drives.map(d=>{
-                    const distTotal=d.distribution?Object.values(d.distribution).reduce((a,b)=>a+(parseInt(b)||0),0):0;
-                    return (
+                    const dt=d.distribution?Object.values(d.distribution).reduce((a,b)=>a+(parseInt(b)||0),0):0;
+                    return(
                       <tr key={d.id} className="border-b hover:bg-gray-50">
                         <td className="px-4 py-3 font-medium">{d.name}</td>
                         <td className="px-4 py-3 text-gray-600">{d.college}</td>
                         <td className="px-4 py-3"><InlineEdit driveId={d.id} field="minutes" current={d.minutes||45} suffix=" min"/></td>
                         <td className="px-4 py-3"><InlineEdit driveId={d.id} field="passPct" current={d.passPct||60} suffix="%"/></td>
                         <td className="px-4 py-3">
-                          <button onClick={()=>openDistEditor(d)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">{distTotal} Qs ✏️</button>
+                          <button onClick={()=>openDist(d)} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">{dt} Qs ✏️</button>
                           <span className="text-xs text-gray-400">{results.filter(r=>r.student.driveId===d.id).length} submitted</span>
                         </td>
                         <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-bold ${d.active?"bg-green-100 text-green-700":"bg-red-100 text-red-600"}`}>{d.active?"Active":"Inactive"}</span></td>
@@ -748,34 +771,34 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
           </div>
         )}
 
-        {/* Questions */}
-        {tab==="questions" && (
+        {/* ── Questions ── */}
+        {tab==="questions"&&(
           <div className="space-y-4">
             <div className="bg-white rounded-xl shadow p-6">
               <h3 className="font-bold text-gray-700 mb-1">Upload Question Bank (CSV)</h3>
-              <p className="text-xs text-gray-400 mb-3">Columns: Question No, Category, Sub-Type, Question, Option A–D, Correct Answer, Explanation</p>
+              <p className="text-xs text-gray-400 mb-3">Required columns: Question No, Category, Sub-Type, Question, Option A, Option B, Option C, Option D, Correct Answer, Explanation</p>
               <div className="flex gap-3 items-center flex-wrap">
                 <Btn onClick={()=>fileRef.current.click()} disabled={saving} cls="bg-blue-600 hover:bg-blue-700 text-white">
-                  {questions.length>0 ? "🔄 Replace Question Bank" : "📂 Upload CSV"}
+                  {questions.length>0?"🔄 Replace Question Bank":"📂 Upload CSV"}
                 </Btn>
                 <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={uploadCSV}/>
-                {questions.length>0 && <span className="text-green-600 text-sm font-semibold">✅ {questions.length} questions in Firebase</span>}
-                {saving && <span className="text-blue-500 text-sm">Uploading to Firebase...</span>}
+                {questions.length>0&&<span className="text-green-600 text-sm font-semibold">✅ {questions.length} questions in Firebase</span>}
+                {saving&&<span className="text-blue-500 text-sm">Uploading...</span>}
               </div>
-              {qBankMeta && (
+              {qBankMeta&&(
                 <div className="mt-3 text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 inline-block">
                   📄 <span className="font-semibold text-gray-600">{qBankMeta.fileName}</span> · {qBankMeta.count} questions · Last updated: {qBankMeta.updatedAt}
                 </div>
               )}
-              {Object.keys(byCategory).length>0 && (
+              {Object.keys(byC).length>0&&(
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {Object.entries(byCategory).map(([c,qs])=>(
+                  {Object.entries(byC).map(([c,qs])=>(
                     <span key={c} className="bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full font-semibold">{c}: {qs.length}</span>
                   ))}
                 </div>
               )}
             </div>
-            {questions.length>0 && (
+            {questions.length>0&&(
               <div className="bg-white rounded-xl shadow overflow-hidden">
                 <div className="px-4 py-3 border-b bg-gray-50 text-sm font-bold text-gray-600">Preview ({questions.length} questions)</div>
                 <div className="overflow-x-auto max-h-96">
@@ -799,139 +822,16 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
           </div>
         )}
 
-        {/* Manual */}
-        {tab==="manual" && (
-          <div className="space-y-6 max-w-3xl">
-
-            <div className="bg-white rounded-xl shadow p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-1">📖 Admin User Manual</h2>
-              <p className="text-xs text-gray-400">QA Placement Exam Portal — Cybercom Creation · Confidential, Admin Only</p>
-            </div>
-
-            {[
-              {
-                icon:"🚀", title:"Getting Started",
-                items:[
-                  ["Step 1 — Upload Question Bank", "Go to the Questions tab and upload your CSV file. The CSV must contain columns: Question No, Category, Sub-Type, Question, Option A, Option B, Option C, Option D, Correct Answer, Explanation. All 135 questions will be stored in Firebase and reused across all drives."],
-                  ["Step 2 — Create a Placement Drive", "Go to the Drives tab. Fill in Drive Name, College, Duration (mins), and Pass % Threshold. Click Add Drive. A drive is a single exam session tied to one college."],
-                  ["Step 3 — Configure Question Distribution", "After creating a drive, click the Qs ✏️ button to set how many questions to pick from each category. Default is auto-balanced across all categories totalling 50 questions. You can override per category."],
-                  ["Step 4 — Activate the Drive", "Drives are Active by default. Only Active drives appear in the student registration form. Deactivate a drive when the exam day is over."],
-                  ["Step 5 — Share the URL", "Share your GitHub Pages URL with students. They register and take the exam directly from their browser — no login or install required."],
-                ]
-              },
-              {
-                icon:"🏫", title:"Managing Drives",
-                items:[
-                  ["Active vs Inactive", "Active drives appear in the student registration dropdown. Inactive drives are hidden from students but their results remain accessible in the admin panel."],
-                  ["Duration", "Set per drive. Default is 45 minutes. Can be edited inline anytime using the ✏️ button — changes apply to new exam sessions only, not ones already in progress."],
-                  ["Pass % Threshold", "Set per drive. Default is 60%. Can be edited inline anytime. Each result is evaluated against the threshold of its drive at the time of viewing."],
-                  ["Question Distribution", "Each drive has its own distribution config. If you change the question bank after creating a drive, re-open the distribution editor for that drive to ensure counts are still valid."],
-                  ["Deleting a Drive", "Deleting a drive removes it from the student form but does NOT delete its results. Results remain accessible under All Drives in the Results tab."],
-                ]
-              },
-              {
-                icon:"📋", title:"Question Bank",
-                items:[
-                  ["Single Shared Bank", "One CSV is used across all drives. Each drive picks questions from it based on its distribution config."],
-                  ["Replacing the Bank", "Click 'Replace Question Bank' to upload a new CSV. A confirmation is shown before replacing. Existing results are never affected — they store question data at time of submission."],
-                  ["CSV Format", "Required columns: Question No, Category, Sub-Type, Question, Option A, Option B, Option C, Option D, Correct Answer, Explanation. Correct Answer must be A, B, C, or D (uppercase)."],
-                  ["Category Breakdown", "After upload, the Questions tab shows a pill for each category with its count. Use this to plan your distribution config per drive."],
-                ]
-              },
-              {
-                icon:"👨‍🎓", title:"Student Registration Rules",
-                items:[
-                  ["Required Fields", "Full Name, Degree/Course, Batch, 10-digit Mobile Number, Email Address, College Name, and Placement Drive selection are all mandatory."],
-                  ["Re-attempt Prevention", "Each student is identified by Email + Drive combination. Once a student submits (manually, time-up, or auto-submit), that combination is locked in Firebase. Any re-attempt attempt shows an error message."],
-                  ["Re-attempt Reset", "If you need to allow a specific student to re-attempt, go to Firebase Console → Firestore → attempts collection and delete the document with their email__driveId key."],
-                ]
-              },
-              {
-                icon:"🛡️", title:"Exam Security Rules",
-                items:[
-                  ["Tab Switch Detection", "The exam monitors tab visibility using the Page Visibility API. If a student switches away from the exam tab for more than 1.5 seconds, a violation is recorded. After 3 violations, the exam is auto-submitted."],
-                  ["Grace Period", "A 1.5-second grace period is applied before counting a tab switch. This absorbs OS notifications, accidental clicks outside the browser, and brief interruptions without penalising the student."],
-                  ["Picture-in-Picture Blocked", "If a student activates Picture-in-Picture mode (used to overlay AI tools), it is immediately exited and counted as a violation."],
-                  ["Right-Click Disabled", "Right-click context menu is disabled during the entire exam to prevent Inspect Element, Save As, and other browser tools."],
-                  ["Keyboard Shortcuts Blocked", "F12 (DevTools), Ctrl+U (View Source), Ctrl+C/V (Copy/Paste), Ctrl+S (Save), Ctrl+P (Print), Ctrl+Shift+I/J/C (DevTools) are all blocked during the exam."],
-                  ["Text Selection Disabled", "Question text and options cannot be selected or copied during the exam."],
-                  ["Browser Back Button Blocked", "The browser back button is intercepted and disabled during the exam. Students cannot navigate away using browser history."],
-                  ["Timer Auto-Submit", "When the exam timer reaches 0, the exam is automatically submitted with whatever answers the student has provided at that point."],
-                  ["Violation Logging", "The submission reason (Manual submit / Time up / Tab switch violations / PiP violations) is recorded for every result and visible in the Results tab and exported CSV."],
-                ]
-              },
-              {
-                icon:"📊", title:"Results & Reporting",
-                items:[
-                  ["Real-Time Results", "Results appear in the admin panel instantly as students submit — no page refresh needed. Powered by Firebase Firestore real-time listeners."],
-                  ["Per-Drive Filtering", "Filter results by drive using the dropdown. Each drive shows its student count."],
-                  ["Search", "Search results by student name or email address."],
-                  ["Sorting", "Sort by: Newest First, Oldest First, Score High→Low, Score Low→High, Name A→Z, Name Z→A."],
-                  ["Summary Cards", "The Results tab shows Total Appeared, Passed, and Average Score for the current filter selection."],
-                  ["Category Breakdown", "Each result can be expanded to show per-category correct/incorrect counts, helping identify topic-wise weaknesses."],
-                  ["Question Audit Trail", "Every result stores the exact question numbers used in that exam. Visible at the bottom of each expanded result and in the exported CSV."],
-                  ["CSV Export", "Export results filtered by drive. Columns: Name, Degree, Batch, Mobile, Email, College, Drive, Date, Score, Total, Percentage, Pass/Fail, Submit Reason, Questions Used."],
-                ]
-              },
-              {
-                icon:"🗄️", title:"Data Management",
-                items:[
-                  ["Clear Results & Attempts", "Wipes all exam results and re-attempt locks. Question bank and drives are preserved. Use this to clean up test data before a real placement drive."],
-                  ["Clear Everything", "Full wipe — removes all drives, results, attempts, and the question bank. Use only when starting completely fresh."],
-                  ["Firebase Storage", "All data is stored in Firebase Firestore (Spark free plan). 1 GB storage, 50,000 reads/day, 20,000 writes/day. At ~10 KB per result, you can store 100,000+ results before hitting storage limits. Data never expires automatically."],
-                  ["Question Bank Storage", "Questions are stored as a single Firestore document to stay within write limits. Max document size is 1 MB — sufficient for 500+ questions."],
-                ]
-              },
-              {
-                icon:"🔐", title:"Admin Access",
-                items:[
-                  ["Secret Access", "The admin panel is not accessible from the home screen. It is opened via the keyboard shortcut Ctrl+Shift+A on any screen."],
-                  ["Password", "Default admin password: cybercom@2024. To change it, update the ADMIN_SECRET constant in the HTML file and redeploy."],
-                  ["Session", "Admin sessions are in-memory only. Refreshing the page logs you out. There is no persistent admin login — re-enter the password each session."],
-                ]
-              },
-              {
-                icon:"📅", title:"Recommended Workflow Per Drive",
-                items:[
-                  ["Before the Drive", "1. Upload / verify question bank is current. 2. Create a new drive with correct college name, duration, and pass %. 3. Configure question distribution. 4. Activate the drive. 5. Share the portal URL with the college coordinator."],
-                  ["During the Drive", "Monitor the Results tab in real time. Results appear as students submit. Check for Tab switch violations or Time up auto-submits."],
-                  ["After the Drive", "1. Export results CSV for the drive. 2. Deactivate the drive so new students cannot register. 3. Share results with HR / management."],
-                  ["Before Next Drive", "Use 'Clear Results & Attempts' only if you want a clean slate. Otherwise results from all drives accumulate and remain filterable."],
-                ]
-              },
-            ].map(section=>(
-              <div key={section.title} className="bg-white rounded-xl shadow overflow-hidden">
-                <div className="px-6 py-4 border-b bg-gray-50">
-                  <h3 className="font-bold text-gray-800">{section.icon} {section.title}</h3>
-                </div>
-                <div className="divide-y">
-                  {section.items.map(([title, desc])=>(
-                    <div key={title} className="px-6 py-4">
-                      <p className="text-sm font-semibold text-gray-700 mb-1">{title}</p>
-                      <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-700">
-              <strong>Version:</strong> QA Placement Exam Portal v3.0 · Firebase Edition ·
-              Built for Cybercom Creation · Admin manual is visible only inside the password-protected admin panel.
-            </div>
-          </div>
-        )}
-
-
-        {tab==="results" && (
+        {/* ── Results ── */}
+        {tab==="results"&&(
           <div className="space-y-4">
-            {results.length>0 && (()=>{
+            {results.length>0&&(()=>{
               const total=filteredResults.length;
-              const passed=filteredResults.filter(r=>{ const d=drives.find(x=>x.id===r.student.driveId); const t=d?.passPct||r.student.drivePassPct||60; return((r.score/r.total)*100)>=t; }).length;
-              const avgPct=total?Math.round(filteredResults.reduce((a,r)=>(a+(r.score/r.total)*100),0)/total):0;
-              return (
+              const passed=filteredResults.filter(r=>{const d=drives.find(x=>x.id===r.student.driveId);const t=d?.passPct||r.student.drivePassPct||60;return((r.score/r.total)*100)>=t;}).length;
+              const avg=total?Math.round(filteredResults.reduce((a,r)=>a+(r.score/r.total)*100,0)/total):0;
+              return(
                 <div className="grid grid-cols-3 gap-4">
-                  {[["Total Appeared",total,"bg-blue-50 text-blue-700"],["Passed",passed,"bg-green-50 text-green-700"],["Avg Score",avgPct+"%","bg-purple-50 text-purple-700"]].map(([l,v,cls])=>(
+                  {[["Total Appeared",total,"bg-blue-50 text-blue-700"],["Passed",passed,"bg-green-50 text-green-700"],["Avg Score",avg+"%","bg-purple-50 text-purple-700"]].map(([l,v,cls])=>(
                     <div key={l} className={`rounded-xl p-4 text-center ${cls}`}>
                       <div className="text-2xl font-bold">{v}</div>
                       <div className="text-xs font-semibold mt-1">{l}</div>
@@ -958,138 +858,157 @@ function AdminPanel({ questions, setQuestions, qBankMeta, setQBankMeta, results,
               <span className="text-sm text-gray-500">{filteredResults.length} record(s)</span>
             </div>
             {filteredResults.length===0
-              ? <div className="bg-white rounded-xl shadow p-10 text-center text-gray-400">No results found.</div>
-              : filteredResults.map((r,i)=>{
-                  const drive=drives.find(d=>d.id===r.student.driveId);
-                  const threshold=drive?.passPct||r.student.drivePassPct||60;
-                  const pct=((r.score/r.total)*100).toFixed(1);
-                  const pass=parseFloat(pct)>=threshold;
-                  const byCat={};
-                  r.detail.forEach(d=>{ if(!byCat[d.category]) byCat[d.category]={right:0,wrong:0}; if(d.isCorrect) byCat[d.category].right++; else byCat[d.category].wrong++; });
-                  return (
-                    <details key={i} className="bg-white rounded-xl shadow">
-                      <summary className="px-6 py-4 cursor-pointer flex items-center justify-between flex-wrap gap-2">
-                        <div className="min-w-0">
-                          <span className="font-bold text-gray-800">{r.student.name}</span>
-                          <span className="text-gray-400 text-xs ml-3">{r.student.college} · {r.student.driveName} · {r.student.date}</span>
-                          {r.reason&&r.reason!=="Manual submit"&&<span className="ml-2 text-xs text-orange-500 font-semibold">({r.reason})</span>}
-                        </div>
-                        <div className="flex items-center gap-3 flex-shrink-0">
-                          <span className="text-xs text-gray-400">Pass: {threshold}%</span>
-                          <span className={`px-3 py-1 rounded-full text-sm font-bold ${pass?"bg-green-100 text-green-700":"bg-red-100 text-red-600"}`}>{pct}% {pass?"✓ Pass":"✗ Fail"}</span>
-                          <span className="text-gray-500 text-sm font-semibold">{r.score}/{r.total}</span>
-                        </div>
-                      </summary>
-                      <div className="px-6 pb-5 border-t pt-4">
-                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-4">
-                          {[["Degree",r.student.degree],["Batch",r.student.batch],["Mobile",r.student.mobile],["Email",r.student.email]].map(([l,v])=>(
-                            <div key={l}><span className="font-semibold">{l}:</span> {v}</div>
-                          ))}
-                        </div>
-                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Category Breakdown</p>
-                        <div className="grid grid-cols-3 gap-2 mb-3">
-                          {Object.entries(byCat).map(([cat,v])=>(
-                            <div key={cat} className="bg-gray-50 rounded-lg p-3 text-xs">
-                              <div className="font-semibold text-gray-700 truncate mb-1">{cat}</div>
-                              <span className="text-green-600 font-bold">{v.right} ✓</span>
-                              <span className="text-red-500 font-bold ml-2">{v.wrong} ✗</span>
-                            </div>
-                          ))}
-                        </div>
-                        <p className="text-xs text-gray-400">Q nos used: {r.detail.map(d=>d.qNo).join(", ")}</p>
+              ?<div className="bg-white rounded-xl shadow p-10 text-center text-gray-400">No results found.</div>
+              :filteredResults.map((r,i)=>{
+                const drive=drives.find(d=>d.id===r.student.driveId);
+                const threshold=drive?.passPct||r.student.drivePassPct||60;
+                const pct=((r.score/r.total)*100).toFixed(1);
+                const pass=parseFloat(pct)>=threshold;
+                const byCat={};
+                r.detail.forEach(d=>{if(!byCat[d.category])byCat[d.category]={right:0,wrong:0};if(d.isCorrect)byCat[d.category].right++;else byCat[d.category].wrong++;});
+                return(
+                  <details key={i} className="bg-white rounded-xl shadow">
+                    <summary className="px-6 py-4 cursor-pointer flex items-center justify-between flex-wrap gap-2">
+                      <div className="min-w-0">
+                        <span className="font-bold text-gray-800">{r.student.name}</span>
+                        <span className="text-gray-400 text-xs ml-3">{r.student.college} · {r.student.driveName} · {r.student.date}</span>
+                        {r.reason&&r.reason!=="Manual submit"&&<span className="ml-2 text-xs text-orange-500 font-semibold">({r.reason})</span>}
                       </div>
-                    </details>
-                  );
-                })
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="text-xs text-gray-400">Pass: {threshold}%</span>
+                        <span className={`px-3 py-1 rounded-full text-sm font-bold ${pass?"bg-green-100 text-green-700":"bg-red-100 text-red-600"}`}>{pct}% {pass?"✓ Pass":"✗ Fail"}</span>
+                        <span className="text-gray-500 text-sm font-semibold">{r.score}/{r.total}</span>
+                      </div>
+                    </summary>
+                    <div className="px-6 pb-5 border-t pt-4">
+                      <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-4">
+                        {[["Degree",r.student.degree],["Batch",r.student.batch],["Mobile",r.student.mobile],["Email",r.student.email]].map(([l,v])=>(
+                          <div key={l}><span className="font-semibold">{l}:</span> {v}</div>
+                        ))}
+                      </div>
+                      <p className="text-xs font-bold text-gray-500 uppercase mb-2">Category Breakdown</p>
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        {Object.entries(byCat).map(([cat,v])=>(
+                          <div key={cat} className="bg-gray-50 rounded-lg p-3 text-xs">
+                            <div className="font-semibold text-gray-700 truncate mb-1">{cat}</div>
+                            <span className="text-green-600 font-bold">{v.right} ✓</span>
+                            <span className="text-red-500 font-bold ml-2">{v.wrong} ✗</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400">Q nos used: {r.detail.map(d=>d.qNo).join(", ")}</p>
+                    </div>
+                  </details>
+                );
+              })
             }
           </div>
         )}
+
+        {/* ── Manual ── */}
+        {tab==="manual"&&(
+          <div className="space-y-6 max-w-3xl">
+            <div className="bg-white rounded-xl shadow p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-1">📖 Admin User Manual</h2>
+              <p className="text-xs text-gray-400">QA Placement Exam Portal — Cybercom Creation · Confidential, Admin Only</p>
+            </div>
+            {MANUAL_SECTIONS.map(section=>(
+              <div key={section.title} className="bg-white rounded-xl shadow overflow-hidden">
+                <div className="px-6 py-4 border-b bg-gray-50">
+                  <h3 className="font-bold text-gray-800">{section.icon} {section.title}</h3>
+                </div>
+                <div className="divide-y">
+                  {section.items.map(([title,desc])=>(
+                    <div key={title} className="px-6 py-4">
+                      <p className="text-sm font-semibold text-gray-700 mb-1">{title}</p>
+                      <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-700">
+              <strong>Version:</strong> QA Placement Exam Portal v3.0 · Firebase Edition · Built for Cybercom Creation · This manual is visible only inside the password-protected admin panel.
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
 }
 
 // ── App Root ──────────────────────────────────────────────────────────────────
-function App() {
-  const [fbReady,  setFbReady]  = useState(window.__fbReady||false);
-  const [loading,  setLoading]  = useState(true);
-  const [questions,setQuestions]= useState([]);
-  const [qBankMeta,setQBankMeta]= useState(null);
-  const [drives,   setDrives]   = useState([]);
-  const [results,  setResults]  = useState([]);
-  const [screen,   setScreen]   = useState("home");
-  const [examQs,   setExamQs]   = useState([]);
-  const [student,  setStudent]  = useState(null);
-  const [showLogin,setShowLogin]= useState(false);
-  const [isAdmin,  setIsAdmin]  = useState(false);
+function App(){
+  const [fbReady,setFbReady]=useState(!!window.__fbReady);
+  const [loading,setLoading]=useState(true);
+  const [questions,setQuestions]=useState([]);
+  const [qBankMeta,setQBankMeta]=useState(null);
+  const [drives,setDrives]=useState([]);
+  const [results,setResults]=useState([]);
+  const [screen,setScreen]=useState("home");
+  const [examQs,setExamQs]=useState([]);
+  const [student,setStudent]=useState(null);
+  const [showLogin,setShowLogin]=useState(false);
+  const [isAdmin,setIsAdmin]=useState(false);
 
-  // Wait for Firebase SDK
   useEffect(()=>{
-    if(window.__fbReady){ setFbReady(true); return; }
+    if(window.__fbReady){setFbReady(true);return;}
     const h=()=>setFbReady(true);
     window.addEventListener("fbready",h);
-    return ()=>window.removeEventListener("fbready",h);
+    return()=>window.removeEventListener("fbready",h);
   },[]);
 
   useEffect(()=>{
-    if(!fbReady) return;
-    let unsub1, unsub2;
-
-    // Load questions once (not a listener — questions don't change during exam)
-    fb().getDoc(fb().doc(db(),"questions","bank")).then(qSnap=>{
-      if(qSnap.exists()){
-        setQuestions(JSON.parse(qSnap.data().data));
-        setQBankMeta({ count: qSnap.data().count, updatedAt: new Date(qSnap.data().updatedAt).toLocaleString("en-IN"), fileName: qSnap.data().fileName||"question_bank.csv" });
+    if(!fbReady)return;
+    let u1,u2;
+    fsGet("questions","bank").then(snap=>{
+      if(snap.exists()){
+        setQuestions(JSON.parse(snap.data().data));
+        setQBankMeta({count:snap.data().count,updatedAt:new Date(snap.data().updatedAt).toLocaleString("en-IN"),fileName:snap.data().fileName||"question_bank.csv"});
       }
     }).catch(e=>console.error("Questions load error:",e));
-
-    // Real-time listeners — attached synchronously so cleanup works correctly
-    unsub1 = fsListen("drives",  data => setDrives(data));
-    unsub2 = fsListen("results", data => setResults(data));
-
+    u1=fsListen("drives",data=>setDrives(data));
+    u2=fsListen("results",data=>setResults(data));
     setLoading(false);
-    return ()=>{ unsub1?.(); unsub2?.(); };
+    return()=>{u1?.();u2?.();};
   },[fbReady]);
 
-  // Ctrl+Shift+A → admin login
   useEffect(()=>{
-    const onKey=e=>{ if(e.ctrlKey&&e.shiftKey&&e.key==="A"){ e.preventDefault(); setShowLogin(true); } };
-    window.addEventListener("keydown",onKey);
-    return ()=>window.removeEventListener("keydown",onKey);
+    const h=e=>{if(e.ctrlKey&&e.shiftKey&&e.key==="A"){e.preventDefault();setShowLogin(true);}};
+    window.addEventListener("keydown",h);
+    return()=>window.removeEventListener("keydown",h);
   },[]);
 
-  const startExam = async studentData=>{
+  const startExam=async studentData=>{
     const drive=drives.find(d=>d.id===studentData.driveId);
-    if(!drive) return alert("Drive not found.");
+    if(!drive)return alert("Drive not found.");
     const dist=drive.distribution;
     if(!dist||Object.values(dist).reduce((a,b)=>a+(parseInt(b)||0),0)===0)
       return alert("Question distribution not configured. Contact admin.");
     const picked=pickQuestions(questions,dist);
-    if(!picked.length) return alert("Could not load questions. Contact admin.");
-    setExamQs(picked); setStudent(studentData); setScreen("exam");
+    if(!picked.length)return alert("Could not load questions. Contact admin.");
+    setExamQs(picked);setStudent(studentData);setScreen("exam");
   };
 
-  const handleResult = async result=>{
-    try {
-      // Save result to Firestore
-      const resultId = `${result.student.email.toLowerCase()}_${result.student.driveId}_${Date.now()}`;
-      await fsSet("results", resultId, result);
-      // Save attempt lock
+  const handleResult=async result=>{
+    try{
+      const id=`${result.student.email.toLowerCase()}_${result.student.driveId}_${Date.now()}`;
+      await fsSet("results",id,result);
       const key=`${result.student.email.toLowerCase()}__${result.student.driveId}`;
-      await fsSet("attempts", key, { key, email:result.student.email, driveId:result.student.driveId, timestamp:new Date().toISOString() });
+      await fsSet("attempts",key,{key,email:result.student.email,driveId:result.student.driveId,timestamp:new Date().toISOString()});
       setScreen("done");
-    } catch(e) {
-      alert("Error saving result: "+e.message+"\n\nYour exam was completed but result may not have saved. Please inform the administrator.");
+    }catch(e){
+      alert("Error saving result: "+e.message+"\n\nPlease inform the administrator.");
       setScreen("done");
     }
   };
 
-  if(!fbReady||loading) return <Spinner msg="Connecting to Firebase..."/>;
-
-  if(isAdmin) return <AdminPanel questions={questions} setQuestions={setQuestions} qBankMeta={qBankMeta} setQBankMeta={setQBankMeta} results={results} drives={drives} setDrives={setDrives} onLogout={()=>setIsAdmin(false)}/>;
-  if(screen==="register") return <RegistrationForm drives={drives} onStart={startExam}/>;
-  if(screen==="exam") return <ExamScreen student={student} questions={examQs} onSubmit={handleResult}/>;
-  if(screen==="done") return (
+  if(!fbReady||loading)return <Spinner msg="Connecting to Firebase..."/>;
+  if(isAdmin)return <AdminPanel questions={questions} setQuestions={setQuestions} qBankMeta={qBankMeta} setQBankMeta={setQBankMeta} results={results} drives={drives} setDrives={setDrives} onLogout={()=>setIsAdmin(false)}/>;
+  if(screen==="register")return <RegistrationForm drives={drives} onStart={startExam}/>;
+  if(screen==="exam")return <ExamScreen student={student} questions={examQs} onSubmit={handleResult}/>;
+  if(screen==="done")return(
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-10 text-center max-w-md">
         <div className="text-5xl mb-4">🎉</div>
@@ -1100,9 +1019,9 @@ function App() {
     </div>
   );
 
-  return (
+  return(
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center p-4">
-      {showLogin && <AdminLogin onLogin={()=>{ setShowLogin(false); setIsAdmin(true); }} onClose={()=>setShowLogin(false)}/>}
+      {showLogin&&<AdminLogin onLogin={()=>{setShowLogin(false);setIsAdmin(true);}} onClose={()=>setShowLogin(false)}/>}
       <div className="bg-white rounded-2xl shadow-xl p-10 text-center max-w-md w-full">
         <div className="text-5xl mb-4">🎓</div>
         <h1 className="text-3xl font-bold text-gray-800">QA Placement Exam</h1>
